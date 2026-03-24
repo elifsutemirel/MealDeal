@@ -3,27 +3,27 @@
 -- =============================================================
 
 -- Drop tables in reverse dependency order
-DROP TABLE IF EXISTS "MealListItem";
-DROP TABLE IF EXISTS "MealList";
-DROP TABLE IF EXISTS "AISuggestion";
-DROP TABLE IF EXISTS "SuggestedSubstitution";
-DROP TABLE IF EXISTS "Comment";
-DROP TABLE IF EXISTS "CartItem";
-DROP TABLE IF EXISTS "Cart";
-DROP TABLE IF EXISTS "Order";
-DROP TABLE IF EXISTS "KitchenChallenge_Recipe";
-DROP TABLE IF EXISTS "HomeCook_Challenge";
-DROP TABLE IF EXISTS "KitchenChallenge";
-DROP TABLE IF EXISTS "SupplierInventory";
-DROP TABLE IF EXISTS "Recipe_Ingredient";
-DROP TABLE IF EXISTS "Ingredient";
-DROP TABLE IF EXISTS "Recipe";
-DROP TABLE IF EXISTS "RecipeCreator";
-DROP TABLE IF EXISTS "VerifiedChef";
-DROP TABLE IF EXISTS "HomeCook";
-DROP TABLE IF EXISTS "LocalSupplier";
-DROP TABLE IF EXISTS "Administrator";
-DROP TABLE IF EXISTS "User";
+DROP TABLE IF EXISTS "MealListItem" CASCADE;
+DROP TABLE IF EXISTS "MealList" CASCADE;
+DROP TABLE IF EXISTS "AISuggestion" CASCADE;
+DROP TABLE IF EXISTS "SuggestedSubstitution" CASCADE;
+DROP TABLE IF EXISTS "Comment" CASCADE;
+DROP TABLE IF EXISTS "CartItem" CASCADE;
+DROP TABLE IF EXISTS "Cart" CASCADE;
+DROP TABLE IF EXISTS "Order" CASCADE;
+DROP TABLE IF EXISTS "KitchenChallenge_Recipe" CASCADE;
+DROP TABLE IF EXISTS "HomeCook_Challenge" CASCADE;
+DROP TABLE IF EXISTS "KitchenChallenge" CASCADE;
+DROP TABLE IF EXISTS "SupplierInventory" CASCADE;
+DROP TABLE IF EXISTS "Recipe_Ingredient" CASCADE;
+DROP TABLE IF EXISTS "Ingredient" CASCADE;
+DROP TABLE IF EXISTS "Recipe" CASCADE;
+DROP TABLE IF EXISTS "RecipeCreator" CASCADE;
+DROP TABLE IF EXISTS "VerifiedChef" CASCADE;
+DROP TABLE IF EXISTS "HomeCook" CASCADE;
+DROP TABLE IF EXISTS "LocalSupplier" CASCADE;
+DROP TABLE IF EXISTS "Administrator" CASCADE;
+DROP TABLE IF EXISTS "User" CASCADE;
 
 -- =============================================================
 -- CORE USER HIERARCHY

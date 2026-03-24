@@ -440,7 +440,7 @@ const AuthView = ({ onLogin }) => {
           body: JSON.stringify({ username, email, password, role }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Registration failed.');
+        if (!res.ok) throw new Error(data.message + (data.detail ? ': ' + data.detail : '') || 'Registration failed.');
         onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
       }
     } catch (err) {
@@ -563,6 +563,11 @@ const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode, setDar
         {user && user.role === 'Verified Chef' && (
           <button onClick={() => setTab('dashboard')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'dashboard' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
             Dashboard
+          </button>
+        )}
+        {user && user.role === 'Local Supplier' && (
+          <button onClick={() => setTab('inventory')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'inventory' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
+            Inventory
           </button>
         )}
       </div>
@@ -1195,6 +1200,279 @@ const CartView = ({ items, onRemove, onCheckoutComplete }) => {
   );
 };
 
+const SupplierInventoryView = ({ user }) => {
+  const [inventory, setInventory] = useState([]);
+  const [allIngredients, setAllIngredients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newItem, setNewItem] = useState({ ingredient_id: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
+
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchInventory();
+      fetchIngredients();
+    }
+  }, [user]);
+
+  const fetchInventory = async () => {
+    try {
+      setError(null);
+      const res = await fetch(`/api/supplier/inventory?userId=${user.id}`);
+      if (!res.ok) throw new Error(`Failed to fetch inventory (Status: ${res.status})`);
+      const data = await res.json();
+      setInventory(data);
+    } catch (err) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchIngredients = async () => {
+    try {
+      const res = await fetch('/api/ingredients');
+      if (!res.ok) throw new Error('Failed to fetch ingredients');
+      const data = await res.json();
+      setAllIngredients(data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleUpdate = async (id, price, qty) => {
+    try {
+      await fetch(`/api/supplier/inventory/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ price: parseFloat(price), available_qty: parseFloat(qty) })
+      });
+      fetchInventory();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleAdd = async () => {
+    try {
+      await fetch('/api/supplier/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newItem, supplier_id: user.id })
+      });
+      setShowAdd(false);
+      fetchInventory();
+    } catch (err) { console.error(err); }
+  };
+
+  if (loading) return <div className="py-24 text-center animate-pulse text-slate-400">Loading Inventory...</div>;
+
+  if (error) return (
+    <div className="py-24 text-center">
+      <div className="text-red-500 mb-4 font-bold">Error: {error}</div>
+      <button onClick={fetchInventory} className="text-emerald-500 underline text-xs font-bold uppercase tracking-widest">Try Again</button>
+    </div>
+  );
+
+  return (
+    <div className="py-12">
+      <div className="flex justify-between items-end mb-12">
+        <div>
+          <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter mb-2">Inventory Management</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Update your stock and prices in real-time</p>
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)} className="bg-emerald-500 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 shadow-lg shadow-emerald-500/20">
+          <Plus size={18} /> Add New Item
+        </button>
+      </div>
+
+      {showAdd && (
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-700 mb-12 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ingredient</label>
+              <select onChange={e => setNewItem({ ...newItem, ingredient_id: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 transition-all outline-none appearance-none">
+                <option value="">Select...</option>
+                {allIngredients.map(i => <option key={i.ingredient_id} value={i.ingredient_id}>{i.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price ($)</label>
+              <input type="number" onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock Qty</label>
+              <input type="number" onChange={e => setNewItem({ ...newItem, available_qty: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Unit</label>
+              <input type="text" onChange={e => setNewItem({ ...newItem, unit: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" defaultValue="kg" />
+            </div>
+            <div className="flex items-end">
+              <button onClick={handleAdd} className="w-full bg-slate-900 dark:bg-emerald-500 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:opacity-90 transition-all">Save Item</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-xl overflow-hidden border border-slate-100 dark:border-slate-700">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-slate-50 dark:border-slate-700/50">
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ingredient</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Price</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Available Qty</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Last Updated</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">
+            {inventory.length === 0 ? (
+              <tr>
+                <td colSpan="5" className="px-10 py-24 text-center">
+                  <p className="text-slate-300 dark:text-slate-600 font-bold uppercase tracking-widest text-xs">No items in your inventory yet.</p>
+                </td>
+              </tr>
+            ) : (
+              inventory.map((item) => (
+                <InventoryRow key={item.inventory_id} item={item} onUpdate={handleUpdate} />
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const InventoryRow = ({ item, onUpdate }) => {
+  const [price, setPrice] = useState(item.price);
+  const [qty, setQty] = useState(item.available_qty);
+  const hasChanged = price !== item.price || qty !== item.available_qty;
+
+  return (
+    <tr className="group hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
+      <td className="px-10 py-8 font-black text-slate-800 dark:text-white">{item.ingredient_name}</td>
+      <td className="px-10 py-8">
+        <div className="flex items-center gap-1">
+          <span className="text-slate-400">$</span>
+          <input type="number" value={price} onChange={e => setPrice(e.target.value)} className="w-20 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+        </div>
+      </td>
+      <td className="px-10 py-8">
+        <div className="flex items-center gap-2">
+          <input type="number" value={qty} onChange={e => setQty(e.target.value)} className="w-16 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+          <span className="text-[10px] font-black uppercase text-slate-400">{item.unit}</span>
+        </div>
+      </td>
+      <td className="px-10 py-8">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(item.last_updated).toLocaleDateString()}</span>
+      </td>
+      <td className="px-10 py-8 text-right">
+        {hasChanged ? (
+          <button onClick={() => onUpdate(item.inventory_id, price, qty)} className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors">Update</button>
+        ) : (
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-700">Sync'd</span>
+        )}
+      </td>
+    </tr>
+  );
+};
+
+const ChefAnalyticsView = ({ user }) => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRoyalties = async () => {
+      try {
+        const res = await fetch(`/api/chef/royalties?userId=${user.id}`);
+        const result = await res.json();
+        setData(result);
+      } catch (err) { console.error(err); }
+      finally { setLoading(false); }
+    };
+    fetchRoyalties();
+  }, [user.id]);
+
+  const totalEarnings = Array.isArray(data) ? data.reduce((acc, item) => acc + parseFloat(item.total_royalty || 0), 0) : 0;
+  const totalCooks = Array.isArray(data) ? data.reduce((acc, item) => acc + parseInt(item.cook_count || 0), 0) : 0;
+
+  if (loading) return <div className="py-24 text-center animate-pulse text-slate-400">Calculating Royalties...</div>;
+
+  return (
+    <div className="py-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+        <div>
+          <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter mb-2">Chef Royalty Hub</h2>
+          <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Performance-based earnings tracker</p>
+        </div>
+        <div className="flex gap-4">
+          <div className="bg-white dark:bg-slate-800 px-8 py-4 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-700">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Total Earnings</p>
+            <p className="text-2xl font-black text-emerald-500">${totalEarnings.toFixed(2)}</p>
+          </div>
+          <div className="bg-amber-500 px-8 py-4 rounded-[2rem] shadow-xl text-white">
+            <p className="text-[10px] font-black uppercase text-amber-100 mb-1">Royalty Score</p>
+            <p className="text-2xl font-black text-white">{parseFloat(Array.isArray(data) && data[0]?.royalty_score || 0).toFixed(1)}</p>
+          </div>
+          <div className="bg-slate-900 dark:bg-slate-700 px-8 py-4 rounded-[2rem] shadow-xl text-white">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">Total Cooks</p>
+            <p className="text-2xl font-black text-white">{totalCooks}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-[3rem] shadow-xl overflow-hidden border border-slate-100 dark:border-slate-700">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-slate-50 dark:border-slate-700/50">
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Recipe Model</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Logged Cooks</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ingredient Revenue</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Royalty (10% + Base)</th>
+              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Performance</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">
+            {!Array.isArray(data) || data.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-10 py-24 text-center">
+                  <p className="text-slate-300 dark:text-slate-600 font-bold uppercase tracking-widest text-xs">No recipe data available yet.</p>
+                </td>
+              </tr>
+            ) : (
+              data.map((item) => (
+                <tr key={item.recipe_id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
+                  <td className="px-10 py-8">
+                    <p className="font-black text-slate-800 dark:text-white mb-1">{item.title}</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">ID: {item.recipe_id}</p>
+                  </td>
+                  <td className="px-10 py-8 font-black text-slate-600 dark:text-slate-400">{item.cook_count}</td>
+                  <td className="px-10 py-8 font-black text-slate-600 dark:text-slate-400">${parseFloat(item.ingredient_revenue).toFixed(2)}</td>
+                  <td className="px-10 py-8">
+                    <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                      +${parseFloat(item.total_royalty).toFixed(2)}
+                    </span>
+                  </td>
+                  <td className="px-10 py-8 font-black text-amber-500">
+                    {parseFloat(item.royalty_score || 0).toFixed(1)} pts
+                  </td>
+                  <td className="px-10 py-8 text-right">
+                    <div className="flex justify-end gap-1">
+                      {[1, 2, 3, 4, 5].map(step => (
+                        <div key={step} className={`h-1 w-4 rounded-full ${step <= (item.cook_count > 0 ? 5 : 0) ? 'bg-emerald-500' : 'bg-slate-100 dark:bg-slate-700'}`} />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Setup ---
 export default function App() {
   const [user, setUser] = useState(null); // Auth State
@@ -1254,6 +1532,7 @@ export default function App() {
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} />}
+            {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView />}
             {currentTab === 'my-meals' && (
@@ -1270,13 +1549,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {currentTab === 'dashboard' && user?.role === 'Verified Chef' && (
-              <div className="py-24 text-center">
-                <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300 dark:text-slate-600"><TrendingUp size={32} /></div>
-                <h2 className="text-lg font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Chef Analytics Hub</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-2">Monitor royalties based on Logged Cooks.</p>
-              </div>
-            )}
+            {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
           </>
         )}
       </main>
