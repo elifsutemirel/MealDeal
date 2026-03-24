@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Search, ChefHat, ShoppingBasket, Users, Clock, Star, 
-  ChevronRight, Plus, Minus, Filter, CheckCircle2, Leaf, 
-  ArrowLeft, Sparkles, TrendingUp, Package, ArrowRight, 
+import {
+  Search, ChefHat, ShoppingBasket, Users, Clock, Star,
+  ChevronRight, Plus, Minus, Filter, CheckCircle2, Leaf,
+  ArrowLeft, Sparkles, TrendingUp, Package, ArrowRight,
   X, Trophy, Flame, ListPlus, CreditCard, LogIn, UserPlus, ShieldCheck,
   Moon, Sun
 } from 'lucide-react';
@@ -37,12 +37,12 @@ const RECIPES = [
       "Assemble bowl with kale and tahini dressing."
     ],
     substitutions: [
-      { 
-        targetId: 'i3', 
-        original: "Roma Tomato", 
-        suggestion: "Vine Tomato", 
+      {
+        targetId: 'i3',
+        original: "Roma Tomato",
+        suggestion: "Vine Tomato",
         suggestedPrice: 0.80,
-        reason: "Mapped via Taxonomy: Tomatoes. Roma is out of stock at Bilkent Hub, but Vine tomatoes are currently available from Local Supplier A." 
+        reason: "Mapped via Taxonomy: Tomatoes. Roma is out of stock at Bilkent Hub, but Vine tomatoes are currently available from Local Supplier A."
       }
     ]
   },
@@ -60,7 +60,7 @@ const RECIPES = [
     category: "Keto",
     image: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&q=80&w=600",
     ingredients: [
-      { id: 'i5', name: "Salmon Fillet", baseQty: 180, unit: "g", status: "available", taxonomy: "Fish", pricePerUnit: 0.05 }, 
+      { id: 'i5', name: "Salmon Fillet", baseQty: 180, unit: "g", status: "available", taxonomy: "Fish", pricePerUnit: 0.05 },
       { id: 'i6', name: "Asparagus", baseQty: 6, unit: "spears", status: "available", taxonomy: "Veg", pricePerUnit: 0.50 },
       { id: 'i7', name: "Lemon", baseQty: 0.5, unit: "pc", status: "missing", taxonomy: "Citrus", pricePerUnit: 1.00 },
       { id: 'i8', name: "Grass-fed Butter", baseQty: 15, unit: "g", status: "available", taxonomy: "Dairy", pricePerUnit: 0.04 }
@@ -72,12 +72,12 @@ const RECIPES = [
       "Flip and sear for 2 minutes with butter and herbs."
     ],
     substitutions: [
-      { 
+      {
         targetId: 'i7',
-        original: "Lemon", 
-        suggestion: "Lime", 
+        original: "Lemon",
+        suggestion: "Lime",
         suggestedPrice: 0.80,
-        reason: "Taxonomy Match: Citrus. Lime provides equivalent acidity for this protein-based keto meal." 
+        reason: "Taxonomy Match: Citrus. Lime provides equivalent acidity for this protein-based keto meal."
       }
     ]
   },
@@ -94,7 +94,7 @@ const RECIPES = [
     time: 35,
     difficulty: "Medium",
     category: "Vegetarian",
-    image: "https://images.unsplash.com/photo-1476124369162-f4978d1b74ca?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&q=80&w=600",
     ingredients: [
       { id: 'i9', name: "Arborio Rice", baseQty: 300, unit: "g", status: "available", taxonomy: "Grains", pricePerUnit: 0.01 },
       { id: 'i10', name: "Cremini Mushrooms", baseQty: 250, unit: "g", status: "available", taxonomy: "Mushrooms", pricePerUnit: 0.04 },
@@ -125,7 +125,7 @@ const RECIPES = [
     time: 25,
     difficulty: "Medium",
     category: "Gluten-Free",
-    image: "https://images.unsplash.com/photo-1455619452474-d2be8b1e4e31?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&q=80&w=600",
     ingredients: [
       { id: 'i14', name: "Chicken Breast", baseQty: 400, unit: "g", status: "available", taxonomy: "Poultry", pricePerUnit: 0.025 },
       { id: 'i15', name: "Thai Green Curry Paste", baseQty: 3, unit: "tbsp", status: "available", taxonomy: "Spice", pricePerUnit: 0.50 },
@@ -156,7 +156,7 @@ const RECIPES = [
     time: 20,
     difficulty: "Hard",
     category: "Gluten-Free",
-    image: "https://images.unsplash.com/photo-1612874742237-6526221fcf1f?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1608756687911-aa1599ab3bd9?auto=format&fit=crop&q=80&w=600",
     ingredients: [
       { id: 'i19', name: "Fresh Pasta", baseQty: 400, unit: "g", status: "available", taxonomy: "Grains", pricePerUnit: 0.15 },
       { id: 'i20', name: "Guanciale", baseQty: 150, unit: "g", status: "available", taxonomy: "Meat", pricePerUnit: 0.30 },
@@ -271,49 +271,8 @@ const RECIPES = [
   }
 ];
 
-// --- Mock Users Data ---
-const USERS_DB = [
-  {
-    id: 1,
-    name: "Elif Sütemirel",
-    email: "elif@bilkent.edu.tr",
-    password: "password123",
-    role: "Home Cook",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
-    joinDate: "2025-06-15",
-    stats: { ordersPlaced: 24, totalSpent: 450.50, favoriteChef: "Chef Aybegüm" }
-  },
-  {
-    id: 2,
-    name: "Chef Aybegüm Yılmaz",
-    email: "aybegum@mealdeal.com",
-    password: "chef123",
-    role: "Verified Chef",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=100",
-    joinDate: "2024-01-10",
-    stats: { recipesCreated: 12, totalCooks: 342, rating: 4.9, earnings: 8750 }
-  },
-  {
-    id: 3,
-    name: "Ankara Fresh Supplier",
-    email: "supplier@ankara.farm",
-    password: "supplier123",
-    role: "Local Supplier",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=100",
-    joinDate: "2024-03-20",
-    stats: { itemsListed: 156, ordersFilfilled: 489, rating: 4.7 }
-  },
-  {
-    id: 4,
-    name: "Admin Dashboard",
-    email: "admin@mealdeal.com",
-    password: "admin123",
-    role: "Administrator",
-    avatar: "https://images.unsplash.com/photo-1502685457456-3b7b3f2b0e3d?auto=format&fit=crop&q=80&w=100",
-    joinDate: "2023-11-01",
-    stats: { platformUsers: 2341, totalTransactions: 12500, revenue: 125000 }
-  }
-];
+// Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
+// Credentials are never stored in the frontend.
 
 // --- Challenges Data ---
 const CHALLENGES = [
@@ -326,7 +285,7 @@ const CHALLENGES = [
     duration: "7 days",
     prize: "Green Leaf Badge + 50 MealCoins",
     participants: 342,
-    image: "https://images.unsplash.com/photo-1559027615-cd2628902d4a?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&q=80&w=600",
     status: "active",
     progress: 45,
     recipes: ["Organic Harvest Bowl", "Buddha Power Bowl", "Creamy Mushroom Risotto"]
@@ -340,7 +299,7 @@ const CHALLENGES = [
     duration: "14 days",
     prize: "Speed Chef Badge + 30 MealCoins",
     participants: 618,
-    image: "https://images.unsplash.com/photo-1571407531221-fcd14d1239ba?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&q=80&w=600",
     status: "active",
     progress: 62,
     recipes: ["Seared Atlantic Salmon", "Pan-Seared Sea Bass", "Spicy Szechuan Noodles"]
@@ -354,7 +313,7 @@ const CHALLENGES = [
     duration: "30 days",
     prize: "Plant-Based Master Badge + 75 MealCoins",
     participants: 891,
-    image: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600",
     status: "active",
     progress: 28,
     recipes: ["Organic Harvest Bowl", "Buddha Power Bowl", "Spicy Szechuan Noodles"]
@@ -368,7 +327,7 @@ const CHALLENGES = [
     duration: "21 days",
     prize: "Keto Champion Badge + 100 MealCoins",
     participants: 245,
-    image: "https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&q=80&w=600",
     status: "active",
     progress: 18,
     recipes: ["Seared Atlantic Salmon", "Pan-Seared Sea Bass"]
@@ -382,7 +341,7 @@ const CHALLENGES = [
     duration: "14 days",
     prize: "Global Palate Badge + 40 MealCoins",
     participants: 523,
-    image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=600",
     status: "upcoming",
     progress: 0,
     recipes: ["Thai Green Curry with Chicken", "Truffle Pasta Carbonara", "Spicy Szechuan Noodles"]
@@ -396,7 +355,7 @@ const CHALLENGES = [
     duration: "Ongoing",
     prize: "Deal Hunter Badge + 60 MealCoins",
     participants: 712,
-    image: "https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=600",
+    image: "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600",
     status: "active",
     progress: 35,
     recipes: ["Organic Harvest Bowl", "Creamy Mushroom Risotto", "Buddha Power Bowl"]
@@ -449,39 +408,45 @@ const fetchGeminiWithBackoff = async (prompt, systemPrompt) => {
 const AuthView = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [role, setRole] = useState('Home Cook');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (isLogin) {
-      // Login logic - check against USERS_DB
-      const user = USERS_DB.find(u => u.email === email && u.password === password);
-      if (user) {
-        onLogin({ name: user.name, role: user.role, email: user.email, id: user.id, avatar: user.avatar });
+    setLoading(true);
+    try {
+      if (isLogin) {
+        // LOGIN — calls backend which runs the SQL login query
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Invalid email or password.');
+        onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
       } else {
-        setError('Invalid email or password. Try: elif@bilkent.edu.tr / password123');
+        // REGISTER — calls backend which runs the SQL registration queries
+        if (!username || !email || !password) {
+          throw new Error('Please fill in all fields.');
+        }
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password, role }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Registration failed.');
+        onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
       }
-    } else {
-      // Register logic - create new user (for demo)
-      if (email && password) {
-        const newUser = {
-          id: USERS_DB.length + 1,
-          name: `${role} User`,
-          email: email,
-          password: password,
-          role: role,
-          avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=100",
-          joinDate: new Date().toISOString().split('T')[0],
-          stats: {}
-        };
-        onLogin({ name: newUser.name, role: newUser.role, email: newUser.email, id: newUser.id });
-      } else {
-        setError('Please fill in all fields');
-      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -497,18 +462,9 @@ const AuthView = ({ onLogin }) => {
         <h2 className="text-2xl font-black text-primary text-center mb-2">
           {isLogin ? 'Welcome Back' : 'Create an Account'}
         </h2>
-        <p className="text-sm text-tertiary text-center mb-4 font-medium">
+        <p className="text-sm text-tertiary text-center mb-6 font-medium">
           {isLogin ? 'Log in to manage your meals and orders.' : 'Join the farm-to-table marketplace.'}
         </p>
-        
-        {isLogin && (
-          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-[10px] font-bold text-blue-700 dark:text-blue-400">
-            Demo Accounts:<br/>
-            📧 elif@bilkent.edu.tr / password123<br/>
-            👨‍🍳 aybegum@mealdeal.com / chef123<br/>
-            🌾 supplier@ankara.farm / supplier123
-          </div>
-        )}
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-[10px] font-bold text-red-700 dark:text-red-400">
@@ -518,54 +474,71 @@ const AuthView = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
-            <div>
-              <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Select Role</label>
-              <div className="grid grid-cols-2 gap-2">
-                {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
-                  <button 
-                    type="button" 
-                    key={r} 
-                    onClick={() => setRole(r)}
-                    className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${role === r ? 'bg-emerald-50 dark:bg-emerald-900 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-tertiary dark:bg-slate-700 border-primary dark:border-slate-600 text-tertiary'}`}
-                  >
-                    {r}
-                  </button>
-                ))}
+            <>
+              <div>
+                <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Username</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="yourname"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
+                />
               </div>
-            </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Select Role</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
+                    <button
+                      type="button"
+                      key={r}
+                      onClick={() => setRole(r)}
+                      className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${role === r ? 'bg-emerald-50 dark:bg-emerald-900 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-tertiary dark:bg-slate-700 border-primary dark:border-slate-600 text-tertiary'}`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
 
           <div>
             <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Email Address</label>
-            <input 
-              required 
-              type="email" 
-              placeholder="user@bilkent.edu.tr" 
+            <input
+              required
+              type="email"
+              placeholder="user@bilkent.edu.tr"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500" 
+              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
             />
           </div>
           <div>
             <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Password</label>
-            <input 
-              required 
-              type="password" 
-              placeholder="••••••••" 
+            <input
+              required
+              type="password"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500" 
+              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
             />
           </div>
 
-          <button type="submit" className="w-full bg-slate-900 dark:bg-slate-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs mt-4 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors shadow-lg shadow-slate-200 dark:shadow-slate-950">
-            {isLogin ? 'Sign In' : 'Register Account'}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-slate-900 dark:bg-slate-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs mt-4 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors shadow-lg shadow-slate-200 dark:shadow-slate-950 disabled:opacity-60"
+          >
+            {loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Register Account'}
           </button>
         </form>
 
         <p className="text-center text-xs font-bold text-tertiary mt-8">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); setEmail(''); setPassword(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); setEmail(''); setPassword(''); setUsername(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
             {isLogin ? 'Register' : 'Log In'}
           </button>
         </p>
@@ -595,7 +568,7 @@ const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode, setDar
       </div>
     </div>
     <div className="flex items-center gap-4">
-      <button 
+      <button
         onClick={() => setDarkMode(!darkMode)}
         className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
         title="Toggle dark mode"
@@ -643,7 +616,7 @@ const LogOut = ({ size }) => (
 const ChallengesView = () => {
   const [filter, setFilter] = useState('active');
 
-  const filteredChallenges = CHALLENGES.filter(c => 
+  const filteredChallenges = CHALLENGES.filter(c =>
     filter === 'all' ? true : c.status === filter
   );
 
@@ -652,17 +625,16 @@ const ChallengesView = () => {
       <header className="mb-12">
         <h1 className="text-4xl font-black text-primary mb-6">Kitchen <span className="text-emerald-500 italic">Challenges</span></h1>
         <p className="text-secondary text-lg mb-8">Complete challenges, earn badges, and become a MealDeal champion!</p>
-        
+
         <div className="flex gap-3 mb-8">
           {['all', 'active', 'upcoming'].map(status => (
             <button
               key={status}
               onClick={() => setFilter(status)}
-              className={`px-6 py-3 rounded-2xl font-bold uppercase text-xs transition-all ${
-                filter === status 
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20' 
-                  : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
-              }`}
+              className={`px-6 py-3 rounded-2xl font-bold uppercase text-xs transition-all ${filter === status
+                ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'
+                : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
+                }`}
             >
               {status === 'all' ? '🎯 All' : status === 'active' ? '⚡ Active' : '🔜 Upcoming'}
             </button>
@@ -682,11 +654,11 @@ const ChallengesView = () => {
                 {challenge.status === 'active' ? '🔥 Active' : '🔜 Upcoming'}
               </div>
             </div>
-            
+
             <div className="p-6">
               <h3 className="text-xl font-black text-primary mb-2">{challenge.title}</h3>
               <p className="text-sm text-secondary mb-4">{challenge.description}</p>
-              
+
               <div className="grid grid-cols-2 gap-3 mb-4 text-[10px] font-bold uppercase">
                 <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-lg">
                   <p className="text-tertiary">Duration</p>
@@ -704,7 +676,7 @@ const ChallengesView = () => {
                   <span className="text-primary">{challenge.progress}%</span>
                 </div>
                 <div className="w-full bg-tertiary dark:bg-slate-800 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-gradient-to-r from-emerald-400 to-emerald-600 h-2 rounded-full transition-all"
                     style={{ width: `${challenge.progress}%` }}
                   />
@@ -717,11 +689,10 @@ const ChallengesView = () => {
 
               <div className="flex justify-between items-center text-xs">
                 <span className="text-tertiary">👥 {challenge.participants} joined</span>
-                <button className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all ${
-                  challenge.status === 'active'
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                    : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
-                }`}>
+                <button className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all ${challenge.status === 'active'
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                  : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
+                  }`}>
                   {challenge.status === 'active' ? 'Join' : 'Notify'}
                 </button>
               </div>
@@ -744,9 +715,9 @@ const ExploreView = ({ onSelectRecipe }) => {
   const filteredRecipes = useMemo(() => {
     return RECIPES.filter(recipe => {
       const searchLower = searchQuery.toLowerCase();
-      const matchesSearch = recipe.title.toLowerCase().includes(searchLower) || 
-                            recipe.ingredients.some(i => i.name.toLowerCase().includes(searchLower)) ||
-                            recipe.chef.toLowerCase().includes(searchLower);
+      const matchesSearch = recipe.title.toLowerCase().includes(searchLower) ||
+        recipe.ingredients.some(i => i.name.toLowerCase().includes(searchLower)) ||
+        recipe.chef.toLowerCase().includes(searchLower);
       const matchesDiet = dietFilter === 'All' || recipe.category === dietFilter;
       const matchesTime = recipe.time <= maxTime;
       const matchesRating = recipe.rating >= minRating;
@@ -758,29 +729,29 @@ const ExploreView = ({ onSelectRecipe }) => {
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8">
       <header className="mb-12">
         <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-6">Discovery <span className="text-emerald-500 italic">Marketplace</span></h1>
-        
+
         {/* Search & Advanced Filters */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm mb-8 space-y-6">
           <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700 px-5 py-4 rounded-2xl w-full border border-slate-200 dark:border-slate-600 focus-within:border-emerald-500 focus-within:bg-white dark:focus-within:bg-slate-600 transition-all">
             <Search size={20} className="text-slate-400 dark:text-slate-500" />
-            <input 
-              type="text" 
-              placeholder="Search recipes, ingredients, or chefs..." 
+            <input
+              type="text"
+              placeholder="Search recipes, ingredients, or chefs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-transparent border-none outline-none w-full text-sm font-medium text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500" 
+              className="bg-transparent border-none outline-none w-full text-sm font-medium text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"><X size={16}/></button>
+              <button onClick={() => setSearchQuery('')} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"><X size={16} /></button>
             )}
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-6 px-2">
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Diet:</span>
               <div className="flex bg-slate-50 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
                 {['All', 'Vegan', 'Keto', 'Gluten-Free'].map(diet => (
-                  <button 
+                  <button
                     key={diet}
                     onClick={() => setDietFilter(diet)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${dietFilter === diet ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -790,7 +761,7 @@ const ExploreView = ({ onSelectRecipe }) => {
                 ))}
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Max Time:</span>
               <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
@@ -803,7 +774,7 @@ const ExploreView = ({ onSelectRecipe }) => {
               <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Min Rating:</span>
               <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600 px-2">
                 {[0, 3, 4, 4.5].map(rating => (
-                  <button 
+                  <button
                     key={rating}
                     onClick={() => setMinRating(rating)}
                     className={`px-2 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${minRating === rating ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400 hover:text-amber-600 dark:hover:text-amber-400'}`}
@@ -865,7 +836,7 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
 
   // Recalculate quantities and price based on servings and selection
   const scaleFactor = servings / 2;
-  
+
   const selectedTotal = useMemo(() => {
     return ingredientsState
       .filter(i => i.selected)
@@ -888,9 +859,9 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
     try {
       const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
       const prompt = `I need a substitute for ${aiTargetIngredient.name} (Taxonomy Category: ${aiTargetIngredient.taxonomy}). My specific request or constraint is: "${aiPrompt}". Currently, the original ingredient costs $${aiTargetIngredient.pricePerUnit.toFixed(2)} per unit. Give me a creative and practical alternative.`;
-      
+
       const result = await fetchGeminiWithBackoff(prompt, systemPrompt);
-      
+
       setAiResult({
         targetId: aiTargetIngredient.id,
         original: aiTargetIngredient.name,
@@ -945,12 +916,12 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
 
           <h1 className="text-5xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">{recipe.title}</h1>
           <div className="flex items-center gap-4 mb-8">
-             <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-               <Leaf size={14} /> Farm Sourced
-             </div>
-             <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-               <ChefHat size={14} /> {recipe.chef}
-             </div>
+            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+              <Leaf size={14} /> Farm Sourced
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+              <ChefHat size={14} /> {recipe.chef}
+            </div>
           </div>
 
           <div className="flex border-b border-slate-100 dark:border-slate-700 mb-8">
@@ -971,11 +942,11 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
                 {ingredientsState.map(ing => (
                   <div key={ing.id} className={`flex items-center justify-between py-4 border-b border-slate-50 dark:border-slate-700 last:border-0 transition-colors ${!ing.selected ? 'opacity-50 grayscale' : ''}`}>
                     <div className="flex items-center gap-4">
-                      <input 
-                        type="checkbox" 
-                        checked={ing.selected} 
+                      <input
+                        type="checkbox"
+                        checked={ing.selected}
                         onChange={() => handleToggleIngredient(ing.id)}
-                        className="w-5 h-5 accent-emerald-500 rounded cursor-pointer" 
+                        className="w-5 h-5 accent-emerald-500 rounded cursor-pointer"
                       />
                       <div>
                         <p className={`font-bold text-slate-800 dark:text-white ${!ing.selected && 'line-through'}`}>{ing.name}</p>
@@ -984,7 +955,7 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
                     </div>
                     <div className="flex items-center gap-4 text-right">
                       {/* Interactive AI Suggestion Button per Ingredient */}
-                      <button 
+                      <button
                         onClick={() => handleRequestAI(ing)}
                         className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
                         title={`Ask AI to substitute ${ing.name}`}
@@ -1033,13 +1004,13 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
         <div className="lg:w-96">
           <div className="sticky top-24 bg-white dark:bg-slate-800 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-2xl p-8">
             <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-8 text-center">Order Customization</h3>
-            
+
             <div className="flex items-center justify-between mb-10">
               <span className="text-xs font-black text-slate-900 dark:text-white uppercase">Serving Size</span>
               <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-600">
-                <button onClick={() => setServings(Math.max(1, servings-1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Minus size={16} /></button>
+                <button onClick={() => setServings(Math.max(1, servings - 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Minus size={16} /></button>
                 <span className="text-xl font-black text-slate-900 dark:text-white w-8 text-center">{servings}</span>
-                <button onClick={() => setServings(Math.min(12, servings+1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Plus size={16} /></button>
+                <button onClick={() => setServings(Math.min(12, servings + 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Plus size={16} /></button>
               </div>
             </div>
 
@@ -1058,12 +1029,12 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
               </div>
             </div>
 
-            <button 
+            <button
               disabled={selectedTotal === 0 || missingIngredientsCount > 0}
-              onClick={() => onAddToCart({ ...recipe, cartIngredients: ingredientsState.filter(i => i.selected), finalPrice: selectedTotal }, servings)} 
+              onClick={() => onAddToCart({ ...recipe, cartIngredients: ingredientsState.filter(i => i.selected), finalPrice: selectedTotal }, servings)}
               className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${selectedTotal === 0 || missingIngredientsCount > 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-600 dark:hover:bg-emerald-600 active:scale-95'}`}
             >
-              <ShoppingBasket size={18} /> 
+              <ShoppingBasket size={18} />
               {missingIngredientsCount > 0 ? 'Resolve Missing Items' : 'Shop This Meal'}
             </button>
             <button className="w-full mt-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 py-3 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:border-slate-400 dark:hover:border-slate-500 transition-all flex items-center justify-center gap-2">
@@ -1088,17 +1059,17 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
               </div>
               <button onClick={() => setAiTargetIngredient(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-500"><X size={20} /></button>
             </div>
-            
+
             {!aiResult ? (
               <div className="space-y-4">
                 <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 tracking-widest">Why do you need a substitute?</label>
-                <textarea 
+                <textarea
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   placeholder="e.g., 'I have a peanut allergy', 'It is out of stock', 'I want something cheaper'..."
                   className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400 h-24 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
-                <button 
+                <button
                   onClick={handleGenerateAISub}
                   disabled={!aiPrompt.trim() || aiLoading}
                   className="w-full bg-indigo-600 dark:bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 dark:hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20 flex items-center justify-center gap-2 disabled:opacity-50"
@@ -1133,7 +1104,7 @@ const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
 
 // 4. MOCK PAYMENT & CHECKOUT
 const CartView = ({ items, onRemove, onCheckoutComplete }) => {
-  const [checkoutStep, setCheckoutStep] = useState('summary'); 
+  const [checkoutStep, setCheckoutStep] = useState('summary');
   const subtotal = items.reduce((acc, item) => acc + item.recipe.finalPrice, 0);
   const total = (subtotal + (items.length > 0 ? 1.99 : 0)).toFixed(2);
 
@@ -1154,8 +1125,8 @@ const CartView = ({ items, onRemove, onCheckoutComplete }) => {
           </div>
           <h1 className="text-3xl font-black text-slate-900 dark:text-white mb-4 uppercase tracking-tighter">Order Confirmed</h1>
           <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
-            <strong>System Action Logged:</strong><br/>
-            - Local Supplier inventory deducted.<br/>
+            <strong>System Action Logged:</strong><br />
+            - Local Supplier inventory deducted.<br />
             - "Cook Action" logged for Chef Royalty metric update.
           </p>
           <p className="text-xs text-slate-400 dark:text-slate-500 animate-pulse">Redirecting to Dashboard...</p>
@@ -1193,27 +1164,27 @@ const CartView = ({ items, onRemove, onCheckoutComplete }) => {
             {items.length > 0 && (
               <div className="lg:w-96">
                 <div className="bg-slate-900 dark:bg-slate-800 text-white rounded-[2.5rem] p-10 shadow-2xl relative overflow-hidden">
-                   <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12"><CreditCard size={120} /></div>
-                   <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-10 relative z-10 text-center">Secure Checkout</h3>
-                   <div className="space-y-4 mb-10 relative z-10">
-                     <div className="flex justify-between text-sm text-slate-400 dark:text-slate-500"><span>Ingredient Total</span><span className="font-bold text-white">${subtotal.toFixed(2)}</span></div>
-                     <div className="flex justify-between text-sm text-slate-400 dark:text-slate-500"><span>Marketplace Fee</span><span className="font-bold text-white">$1.99</span></div>
-                     <div className="pt-6 border-t border-slate-800 dark:border-slate-700 flex justify-between items-center">
-                       <span className="text-xs font-black uppercase tracking-widest">Grand Total</span>
-                       <span className="text-3xl font-black text-emerald-400 tracking-tighter">${total}</span>
-                     </div>
-                   </div>
-                   
-                   {checkoutStep === 'processing' ? (
-                     <div className="w-full py-5 rounded-2xl bg-slate-800 dark:bg-slate-700 flex items-center justify-center gap-3">
-                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                       <span className="text-xs font-black uppercase tracking-widest">Processing Transaction...</span>
-                     </div>
-                   ) : (
-                     <button onClick={handleProcessPayment} className="w-full bg-emerald-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-600 dark:hover:bg-emerald-600 transition-all active:scale-95 shadow-lg shadow-emerald-500/20">
-                        Confirm & Pay ${total}
-                     </button>
-                   )}
+                  <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12"><CreditCard size={120} /></div>
+                  <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-10 relative z-10 text-center">Secure Checkout</h3>
+                  <div className="space-y-4 mb-10 relative z-10">
+                    <div className="flex justify-between text-sm text-slate-400 dark:text-slate-500"><span>Ingredient Total</span><span className="font-bold text-white">${subtotal.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm text-slate-400 dark:text-slate-500"><span>Marketplace Fee</span><span className="font-bold text-white">$1.99</span></div>
+                    <div className="pt-6 border-t border-slate-800 dark:border-slate-700 flex justify-between items-center">
+                      <span className="text-xs font-black uppercase tracking-widest">Grand Total</span>
+                      <span className="text-3xl font-black text-emerald-400 tracking-tighter">${total}</span>
+                    </div>
+                  </div>
+
+                  {checkoutStep === 'processing' ? (
+                    <div className="w-full py-5 rounded-2xl bg-slate-800 dark:bg-slate-700 flex items-center justify-center gap-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                      <span className="text-xs font-black uppercase tracking-widest">Processing Transaction...</span>
+                    </div>
+                  ) : (
+                    <button onClick={handleProcessPayment} className="w-full bg-emerald-500 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-600 dark:hover:bg-emerald-600 transition-all active:scale-95 shadow-lg shadow-emerald-500/20">
+                      Confirm & Pay ${total}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1265,11 +1236,11 @@ export default function App() {
 
   return (
     <div className={`min-h-screen bg-[#F8F9FA] dark:bg-slate-900 selection:bg-emerald-100 dark:selection:bg-emerald-900 font-sans text-slate-900 dark:text-white overflow-x-hidden ${darkMode ? 'dark' : ''}`}>
-      <Navbar 
+      <Navbar
         user={user}
-        activeTab={currentTab} 
-        setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }} 
-        cartCount={cart.length} 
+        activeTab={currentTab}
+        setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
+        cartCount={cart.length}
         onLogout={() => { setUser(null); setCurrentTab('explore'); }}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
@@ -1283,7 +1254,7 @@ export default function App() {
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} />}
-            
+
             {currentTab === 'challenges' && <ChallengesView />}
             {currentTab === 'my-meals' && (
               <div className="py-24 text-center">
