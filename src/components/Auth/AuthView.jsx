@@ -9,10 +9,12 @@ export const AuthView = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setInfoMsg('');
     
     // Validations
     if (!isLogin && (!username || !email || !password)) {
@@ -83,6 +85,11 @@ export const AuthView = ({ onLogin }) => {
             {error}
           </div>
         )}
+        {infoMsg && (
+          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+            {infoMsg}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
@@ -128,7 +135,18 @@ export const AuthView = ({ onLogin }) => {
             />
           </div>
           <div>
-            <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Password</label>
+            <div className="flex justify-between mb-2">
+              <label className="text-[10px] font-black uppercase text-tertiary block tracking-widest">Password</label>
+              {isLogin && (
+                <button 
+                  type="button" 
+                  onClick={() => setInfoMsg('A password reset link has been sent to your email (simulated).')}
+                  className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+                >
+                  Forgot Password?
+                </button>
+              )}
+            </div>
             <input
               required
               type="password"
@@ -150,7 +168,7 @@ export const AuthView = ({ onLogin }) => {
 
         <p className="text-center text-xs font-bold text-tertiary mt-8">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); setEmail(''); setPassword(''); setUsername(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
             {isLogin ? 'Register' : 'Log In'}
           </button>
         </p>
