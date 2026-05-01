@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus } from 'lucide-react';
+import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send } from 'lucide-react';
 import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
@@ -17,6 +17,48 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const [userMealLists, setUserMealLists] = useState([]);
   const [showMealListModal, setShowMealListModal] = useState(false);
   const [mealListLoading, setMealListLoading] = useState(false);
+
+  // Review state
+  const [reviews, setReviews] = useState(recipe.reviews || []);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewRating, setReviewRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState(null);
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+
+  const canReview = user && (user.role === 'Home Cook' || user.role === 'Verified Chef');
+
+  const handleSubmitReview = async () => {
+    if (!reviewText.trim() || reviewRating === 0) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+    try {
+      const res = await fetch(`/api/recipe/${recipe.id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          rating: reviewRating,
+          comment: reviewText.trim()
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to post review');
+      }
+      const newReview = await res.json();
+      setReviews(prev => [newReview, ...prev]);
+      setReviewText('');
+      setReviewRating(0);
+      setReviewSuccess(true);
+      setTimeout(() => setReviewSuccess(false), 3000);
+    } catch (err) {
+      setReviewError(err.message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   // Recalculate quantities and price based on servings and selection
   const scaleFactor = servings / 2;
@@ -218,14 +260,82 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
             )}
             {activeSubView === 'reviews' && (
               <div className="space-y-6">
-                {recipe.reviews.map((rev, idx) => (
-                  <div key={idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-slate-800 dark:text-white text-sm">{rev.user}</span>
+                {/* Review Form — only for Home Cooks & Verified Chefs */}
+                {canReview && (
+                  <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4">Write a Review</h4>
+                    {reviewSuccess && (
+                      <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4 animate-in fade-in">✓ Review posted successfully!</div>
+                    )}
+                    {reviewError && (
+                      <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-bold mb-4">{reviewError}</div>
+                    )}
+                    <div className="flex items-center gap-1 mb-4">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          onClick={() => setReviewRating(star)}
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(0)}
+                          className="transition-transform hover:scale-110"
+                        >
+                          <Star
+                            size={24}
+                            className={`transition-colors ${(hoverRating || reviewRating) >= star ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`}
+                          />
+                        </button>
+                      ))}
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-500 ml-2">
+                        {reviewRating > 0 ? `${reviewRating}/5` : 'Select rating'}
+                      </span>
                     </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 italic">"{rev.comment}"</p>
+                    <textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder="Share your experience with this recipe..."
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 h-20 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                    />
+                    <button
+                      onClick={handleSubmitReview}
+                      disabled={!reviewText.trim() || reviewRating === 0 || reviewSubmitting}
+                      className={`mt-3 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all ${!reviewText.trim() || reviewRating === 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'}`}
+                    >
+                      {reviewSubmitting ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> : <Send size={14} />}
+                      {reviewSubmitting ? 'Posting...' : 'Submit Review'}
+                    </button>
                   </div>
-                ))}
+                )}
+                {!canReview && user && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                    Only Home Cooks and Verified Chefs can post reviews.
+                  </div>
+                )}
+                {!user && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                    Sign in to leave a review.
+                  </div>
+                )}
+
+                {/* Existing Reviews */}
+                {reviews.length === 0 ? (
+                  <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">No reviews yet</div>
+                ) : (
+                  reviews.map((rev, idx) => (
+                    <div key={rev.id || idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl animate-in fade-in">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-slate-800 dark:text-white text-sm">{rev.user}</span>
+                        {rev.rating && (
+                          <div className="flex items-center gap-0.5">
+                            {[1,2,3,4,5].map(s => (
+                              <Star key={s} size={12} className={`${s <= rev.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 italic">"{rev.comment}"</p>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
