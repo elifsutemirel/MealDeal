@@ -1,18 +1,36 @@
-import React, { useState, useMemo } from 'react';
-import { Search, X, Clock, Star, Filter } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, X, Clock, Star, Filter, Loader2 } from 'lucide-react';
 import { RECIPES } from '../../data/recipes';
 
 export const ExploreView = ({ onSelectRecipe }) => {
+  const [recipes, setRecipes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dietFilter, setDietFilter] = useState('All');
   const [maxTime, setMaxTime] = useState(60);
   const [minRating, setMinRating] = useState(0);
-  
-  // Recipes imported from data/recipes via ES module
+
+  useEffect(() => {
+    fetch('/api/recipes')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setRecipes(data);
+        } else {
+          // Fallback to mock data if the DB is empty (e.g., after a fresh docker compose down -v)
+          setRecipes(RECIPES);
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch recipes:", err);
+        setLoading(false);
+      });
+  }, []);
 
   // Effective Filtering Logic
   const filteredRecipes = useMemo(() => {
-    return RECIPES.filter(recipe => {
+    return recipes.filter(recipe => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = recipe.title.toLowerCase().includes(searchLower) ||
         recipe.ingredients.some(i => i.name.toLowerCase().includes(searchLower)) ||
@@ -87,7 +105,12 @@ export const ExploreView = ({ onSelectRecipe }) => {
         </div>
       </header>
 
-      {filteredRecipes.length === 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Loader2 size={32} className="animate-spin text-emerald-500 mb-4" />
+          <p className="font-bold uppercase tracking-widest text-xs">Loading Recipes...</p>
+        </div>
+      ) : filteredRecipes.length === 0 ? (
         <div className="py-20 text-center text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-[3rem]">
           No recipes found matching your criteria.
         </div>
