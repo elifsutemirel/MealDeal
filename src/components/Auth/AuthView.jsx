@@ -10,6 +10,8 @@ export const AuthView = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
+  const [address, setAddress] = useState('');
+  const [locationName, setLocationName] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,6 +21,10 @@ export const AuthView = ({ onLogin }) => {
     // Validations
     if (!isLogin && (!username || !email || !password)) {
       setError('Please fill in all fields.');
+      return;
+    }
+    if (!isLogin && role === 'Local Supplier' && (!address || !locationName)) {
+      setError('Please provide address and location name for Local Supplier.');
       return;
     }
     if (!email || !password) {
@@ -51,7 +57,7 @@ export const AuthView = ({ onLogin }) => {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password, role }),
+          body: JSON.stringify({ username, email, password, role, address, location_name: locationName }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message + (data.detail ? ': ' + data.detail : '') || 'Registration failed.');
@@ -120,6 +126,32 @@ export const AuthView = ({ onLogin }) => {
                   ))}
                 </div>
               </div>
+              {role === 'Local Supplier' && (
+                <>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Address</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="123 Farm Road, Green Valley"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Location Name</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="Green Valley Farms"
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
 
@@ -168,7 +200,7 @@ export const AuthView = ({ onLogin }) => {
 
         <p className="text-center text-xs font-bold text-tertiary mt-8">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setAddress(''); setLocationName(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
             {isLogin ? 'Register' : 'Log In'}
           </button>
         </p>

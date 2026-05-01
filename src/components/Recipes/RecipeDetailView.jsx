@@ -5,7 +5,12 @@ import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
-  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ ...i, selected: true })));
+  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ 
+    ...i, 
+    selected: true,
+    selectedSupplier: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0] : null,
+    pricePerUnit: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0].price : i.pricePerUnit
+  })));
 
   // AI substitution state
   const [aiTargetIngredient, setAiTargetIngredient] = useState(null);
@@ -29,6 +34,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
   const handleToggleIngredient = (id) => {
     setIngredientsState(prev => prev.map(i => i.id === id ? { ...i, selected: !i.selected } : i));
+  };
+
+  const handleSupplierChange = (id, supplierId) => {
+    setIngredientsState(prev => prev.map(i => {
+      if (i.id === id) {
+        const sup = i.suppliers.find(s => s.supplier_id === parseInt(supplierId));
+        return { ...i, selectedSupplier: sup, pricePerUnit: sup ? sup.price : i.pricePerUnit };
+      }
+      return i;
+    }));
   };
 
   const handleRequestAI = (ingredient) => {
@@ -176,7 +191,24 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       />
                       <div>
                         <p className={`font-bold text-slate-800 dark:text-white ${!ing.selected && 'line-through'}`}>{ing.name}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy}</p>
+                        {ing.suppliers && ing.suppliers.length > 0 ? (
+                          <div className="mt-1">
+                            <select 
+                              value={ing.selectedSupplier?.supplier_id || ''} 
+                              onChange={(e) => handleSupplierChange(ing.id, e.target.value)}
+                              disabled={!ing.selected}
+                              className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 border-none rounded px-2 py-1 outline-none"
+                            >
+                              {ing.suppliers.map(s => (
+                                <option key={s.supplier_id} value={s.supplier_id}>
+                                  {s.supplier_name} ({s.location_name}) - ${s.price}/{ing.unit}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy || 'No local supplier'}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-right">

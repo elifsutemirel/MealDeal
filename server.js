@@ -40,7 +40,7 @@ const pool = new Pool({
 
 // REGISTER
 app.post('/api/auth/register', async (req, res) => {
-    const { username, email, password, role } = req.body;
+    const { username, email, password, role, address, location_name } = req.body;
     let client;
     try {
         client = await pool.connect();
@@ -74,7 +74,7 @@ app.post('/api/auth/register', async (req, res) => {
             await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
             await client.query('INSERT INTO "VerifiedChef" (user_id, verification_date, status) VALUES ($1, CURRENT_DATE, \'pending\')', [userId]);
         } else if (role === 'Local Supplier') {
-            await client.query('INSERT INTO "LocalSupplier" (user_id, address, location_name) VALUES ($1, $2, $3)', [userId, '', '']);
+            await client.query('INSERT INTO "LocalSupplier" (user_id, address, location_name) VALUES ($1, $2, $3)', [userId, address || '', location_name || '']);
         } else if (role === 'Administrator') {
             await client.query('INSERT INTO "Administrator" (user_id, role_level) VALUES ($1, $2)', [userId, 'standard']);
         }
@@ -267,6 +267,37 @@ app.get('/api/ingredients', async (req, res) => {
     }
 });
 
+// GET Supplier Marketplace (All suppliers and their inventory)
+app.get('/api/marketplace', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                ls.user_id AS supplier_id,
+                u.username AS supplier_name,
+                ls.location_name,
+                COALESCE(json_agg(json_build_object(
+                    'inventory_id', si.inventory_id,
+                    'ingredient_id', i.ingredient_id,
+                    'name', i.name,
+                    'unit', si.unit,
+                    'price', si.price,
+                    'available_qty', si.available_qty
+                )) FILTER (WHERE si.inventory_id IS NOT NULL), '[]'::json) as inventory
+            FROM "LocalSupplier" ls
+            JOIN "User" u ON u.user_id = ls.user_id
+            LEFT JOIN "SupplierInventory" si ON si.supplier_id = ls.user_id AND si.available_qty > 0
+            LEFT JOIN "Ingredient" i ON i.ingredient_id = si.ingredient_id
+            GROUP BY ls.user_id, u.username, ls.location_name
+            ORDER BY u.username ASC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('MARKETPLACE ERROR:', error);
+        res.status(500).json({ message: 'Error fetching marketplace data.' });
+    }
+});
+
 // GET Supplier Inventory
 app.get('/api/supplier/inventory', async (req, res) => {
     const userId = req.query.userId;
@@ -292,18 +323,45 @@ app.get('/api/supplier/inventory', async (req, res) => {
 
 // ADD to Inventory
 app.post('/api/supplier/inventory', async (req, res) => {
-    const { supplier_id, ingredient_id, unit, price, package_size, available_qty } = req.body;
+    const { supplier_id, ingredient_name, unit, price, package_size, available_qty } = req.body;
+    
+    if (!ingredient_name || !ingredient_name.trim()) {
+        return res.status(400).json({ message: 'Ingredient name is required.' });
+    }
+
+    let client;
     try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Check if ingredient exists
+        let ingRes = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name ILIKE $1', [ingredient_name.trim()]);
+        let ingredientId;
+
+        if (ingRes.rows.length > 0) {
+            ingredientId = ingRes.rows[0].ingredient_id;
+        } else {
+            // Create new ingredient
+            let newIngRes = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ingredient_name.trim()]);
+            ingredientId = newIngRes.rows[0].ingredient_id;
+        }
+
+        // Insert into SupplierInventory
         const query = `
             INSERT INTO "SupplierInventory" (supplier_id, ingredient_id, unit, price, package_size, available_qty)
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *;
         `;
-        const result = await pool.query(query, [supplier_id, ingredient_id, unit, price, package_size, available_qty]);
+        const result = await client.query(query, [supplier_id, ingredientId, unit, price, package_size, available_qty]);
+        
+        await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
     } catch (error) {
+        if (client) await client.query('ROLLBACK');
         console.error(error);
         res.status(500).json({ message: 'Error adding to inventory.' });
+    } finally {
+        if (client) client.release();
     }
 });
 
@@ -323,6 +381,18 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Error updating inventory.' });
+    }
+});
+
+// DELETE Inventory
+app.delete('/api/supplier/inventory/:id', async (req, res) => {
+    const inventoryId = req.params.id;
+    try {
+        await pool.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inventoryId]);
+        res.json({ message: 'Item removed from inventory.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error deleting inventory item.' });
     }
 });
 
@@ -391,7 +461,21 @@ app.get('/api/recipes', async (req, res) => {
                         'name', i.name,
                         'baseQty', ri.qty,
                         'unit', ri.unit,
-                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10)
+                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                        'suppliers', (
+                            SELECT COALESCE(json_agg(json_build_object(
+                                'inventory_id', si.inventory_id,
+                                'supplier_id', su.user_id,
+                                'supplier_name', su.username,
+                                'location_name', ls.location_name,
+                                'price', si.price,
+                                'available_qty', si.available_qty
+                            )), '[]'::json)
+                            FROM "SupplierInventory" si
+                            JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                            JOIN "User" su ON su.user_id = ls.user_id
+                            WHERE si.ingredient_id = i.ingredient_id
+                        )
                     )), '[]'::json)
                     FROM "Recipe_Ingredient" ri
                     JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
@@ -530,10 +614,25 @@ app.post('/api/checkout', async (req, res) => {
             [totalAmount || 0, effectiveUserId]
         );
 
-        // 2. Soft Integration: Log the actions instead of strict inserts to avoid foreign key failures
-        // with the static dummy recipes/ingredients which might not be in the database yet.
+        // 2. Deduct Supplier Inventory
+        if (items && items.length > 0) {
+            for (const item of items) {
+                const scaleFactor = item.recipe.isIngredientOnly ? item.servings : item.servings / 2;
+                const ingredients = item.recipe.cartIngredients || [];
+                for (const ing of ingredients) {
+                    if (ing.selectedSupplier && ing.selectedSupplier.inventory_id) {
+                        const deduction = ing.baseQty * scaleFactor;
+                        await client.query(
+                            'UPDATE "SupplierInventory" SET available_qty = GREATEST(0, available_qty - $1) WHERE inventory_id = $2',
+                            [deduction, ing.selectedSupplier.inventory_id]
+                        );
+                        console.log(`[Checkout] Deducted ${deduction} from inventory ${ing.selectedSupplier.inventory_id}`);
+                    }
+                }
+            }
+        }
+
         console.log(`[Checkout] User ${effectiveUserId} checked out ${items?.length || 0} items for $${totalAmount}.`);
-        console.log(`[Checkout] - Local Supplier inventory hypothetically deducted.`);
         console.log(`[Checkout] - 'Cook Action' hypothetically logged for Chef Royalty metric update.`);
 
         await client.query('COMMIT');

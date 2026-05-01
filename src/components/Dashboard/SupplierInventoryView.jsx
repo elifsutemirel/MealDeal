@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 
-const InventoryRow = ({ item, onUpdate }) => {
+const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
   const [qty, setQty] = useState(item.available_qty);
   const hasChanged = price !== item.price || qty !== item.available_qty;
@@ -24,12 +24,13 @@ const InventoryRow = ({ item, onUpdate }) => {
       <td className="px-10 py-8">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(item.last_updated).toLocaleDateString()}</span>
       </td>
-      <td className="px-10 py-8 text-right">
+      <td className="px-10 py-8 text-right flex flex-col gap-2 justify-center items-end">
         {hasChanged ? (
           <button onClick={() => onUpdate(item.inventory_id, price, qty)} className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors">Update</button>
         ) : (
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-700">Sync'd</span>
         )}
+        <button onClick={() => onDelete(item.inventory_id)} className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition-colors">Delete</button>
       </td>
     </tr>
   );
@@ -40,7 +41,7 @@ export const SupplierInventoryView = ({ user }) => {
   const [allIngredients, setAllIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [newItem, setNewItem] = useState({ ingredient_id: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
+  const [newItem, setNewItem] = useState({ ingredient_name: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
 
   const [error, setError] = useState(null);
 
@@ -86,8 +87,18 @@ export const SupplierInventoryView = ({ user }) => {
     } catch (err) { console.error(err); }
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    try {
+      await fetch(`/api/supplier/inventory/${id}`, {
+        method: 'DELETE'
+      });
+      fetchInventory();
+    } catch (err) { console.error(err); }
+  };
+
   const handleAdd = async () => {
-    if (!newItem.ingredient_id || !newItem.price || !newItem.available_qty) {
+    if (!newItem.ingredient_name || !newItem.price || !newItem.available_qty) {
       alert('Please fill in all fields');
       return;
     }
@@ -96,7 +107,7 @@ export const SupplierInventoryView = ({ user }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          ingredient_id: parseInt(newItem.ingredient_id),
+          ingredient_name: newItem.ingredient_name,
           unit: newItem.unit, 
           price: parseFloat(newItem.price), 
           package_size: newItem.package_size,
@@ -105,8 +116,9 @@ export const SupplierInventoryView = ({ user }) => {
         })
       });
       setShowAdd(false);
-      setNewItem({ ingredient_id: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
+      setNewItem({ ingredient_name: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
       fetchInventory();
+      fetchIngredients(); // Refresh ingredients list in case a new one was added
     } catch (err) { 
       console.error(err); 
       alert('Failed to add item');
@@ -139,10 +151,16 @@ export const SupplierInventoryView = ({ user }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ingredient</label>
-              <select onChange={e => setNewItem({ ...newItem, ingredient_id: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 transition-all outline-none appearance-none">
-                <option value="">Select...</option>
-                {allIngredients.map(i => <option key={i.ingredient_id} value={i.ingredient_id}>{i.name}</option>)}
-              </select>
+              <input 
+                list="ingredients-list" 
+                value={newItem.ingredient_name}
+                onChange={e => setNewItem({ ...newItem, ingredient_name: e.target.value })} 
+                placeholder="Type or select..."
+                className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 transition-all outline-none"
+              />
+              <datalist id="ingredients-list">
+                {allIngredients.map(i => <option key={i.ingredient_id} value={i.name} />)}
+              </datalist>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price ($)</label>
@@ -183,7 +201,7 @@ export const SupplierInventoryView = ({ user }) => {
               </tr>
             ) : (
               inventory.map((item) => (
-                <InventoryRow key={item.inventory_id} item={item} onUpdate={handleUpdate} />
+                <InventoryRow key={item.inventory_id} item={item} onUpdate={handleUpdate} onDelete={handleDelete} />
               ))
             )}
           </tbody>

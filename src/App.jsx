@@ -11,6 +11,7 @@ import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
 import { ProfileView } from './components/Profile/ProfileView';
+import { SupplierMarketplaceView } from './components/Marketplace/SupplierMarketplaceView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -93,6 +94,7 @@ export default function App() {
           <>
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
+            {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
