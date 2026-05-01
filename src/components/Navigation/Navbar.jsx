@@ -37,10 +37,16 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
       </button>
       {user ? (
         <>
-          <div className="text-right hidden lg:block mr-2">
-            <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{user.name}</p>
+          <div 
+            onClick={() => setTab('profile')} 
+            className="text-right hidden lg:block mr-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{user.username || user.name}</p>
             <p className="text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest">{user.role}</p>
           </div>
+          <button onClick={() => setTab('profile')} className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors" title="My Profile">
+            <Users size={20} />
+          </button>
           <button onClick={() => setTab('cart')} className="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors">
             <ShoppingBasket size={20} />
             {cartCount > 0 && <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cartCount}</span>}
