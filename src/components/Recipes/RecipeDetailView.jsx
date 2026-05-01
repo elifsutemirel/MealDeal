@@ -263,7 +263,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                               >
                                 {ing.suppliers.map((sup) => (
                                   <option key={sup.inventory_id || sup.id} value={sup.inventory_id || sup.id}>
-                                    {sup.supplier_name || sup.name} (${Number(sup.price).toFixed(2)})
+                                    {sup.location_name || sup.supplier_name || sup.name} (${Number(sup.price).toFixed(2)})
                                   </option>
                                 ))}
                               </select>

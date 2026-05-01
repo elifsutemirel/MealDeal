@@ -38,7 +38,7 @@ export const SupplierMarketplaceView = ({ user, onAddToCart }) => {
     // Structure it so CartView can process it smoothly
     const cartItem = {
       isIngredientOnly: true,
-      title: `${item.name} from ${supplier.supplier_name}`,
+      title: `${item.name} from ${supplier.location_name}`,
       image: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=600', // Generic fresh food image
       finalPrice: parseFloat(item.price) * qty,
       cartIngredients: [{
@@ -105,10 +105,10 @@ export const SupplierMarketplaceView = ({ user, onAddToCart }) => {
               <div className="p-8 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex justify-between items-center">
                 <div>
                   <h3 className="text-xl font-black text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                    <Store size={20} className="text-emerald-500" /> {supplier.supplier_name}
+                    <Store size={20} className="text-emerald-500" /> {supplier.location_name}
                   </h3>
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                    <MapPin size={12} /> {supplier.location_name}
+                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                    <MapPin size={10} /> {supplier.supplier_name}
                   </p>
                 </div>
                 <div className="text-right">
