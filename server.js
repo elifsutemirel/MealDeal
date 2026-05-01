@@ -171,6 +171,132 @@ app.get('/api/chef/royalties', async (req, res) => {
     }
 });
 
+// GET Creator Royalty Dashboard
+// Available to any authenticated user that is a RecipeCreator (Home Cook or Verified Chef).
+app.get('/api/creator/royalty-dashboard', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(401).json({ message: 'Authentication required.' });
+
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT user_id FROM "RecipeCreator" WHERE user_id = $1',
+            [userId]
+        );
+
+        if (creatorCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Creator royalty dashboard is only available to recipe creators.' });
+        }
+
+        const perRecipeQuery = `
+            WITH review_stats AS (
+                SELECT
+                    recipe_id,
+                    ROUND(AVG(rating)::numeric, 1) AS avg_rating,
+                    COUNT(*) AS review_count
+                FROM "Comment"
+                WHERE rating IS NOT NULL
+                GROUP BY recipe_id
+            ),
+            cook_stats AS (
+                SELECT
+                    recipe_id,
+                    COUNT(*) AS cooked_count
+                FROM "Comment"
+                WHERE cooked_at IS NOT NULL
+                GROUP BY recipe_id
+            ),
+            purchase_stats AS (
+                SELECT
+                    c.recipe_id,
+                    COUNT(DISTINCT o.order_id) AS meal_kit_order_count
+                FROM "Cart" c
+                JOIN "Order" o ON o.cart_id = c.cart_id
+                WHERE o.status = 'confirmed'
+                GROUP BY c.recipe_id
+            )
+            SELECT
+                r.recipe_id,
+                r.title,
+                r.visibility,
+                COALESCE(rs.avg_rating, 0::numeric)::text AS avg_rating,
+                COALESCE(rs.review_count, 0)::int AS review_count,
+                COALESCE(cs.cooked_count, 0)::int AS cooked_count,
+                COALESCE(ps.meal_kit_order_count, 0)::int AS meal_kit_order_count,
+                (
+                    COALESCE(ps.meal_kit_order_count, 0) * 10
+                    + COALESCE(cs.cooked_count, 0) * 2
+                    + COALESCE(rs.review_count, 0)
+                )::int AS creator_reward_points
+            FROM "Recipe" r
+            LEFT JOIN review_stats rs ON rs.recipe_id = r.recipe_id
+            LEFT JOIN cook_stats cs ON cs.recipe_id = r.recipe_id
+            LEFT JOIN purchase_stats ps ON ps.recipe_id = r.recipe_id
+            WHERE r.creator_id = $1
+            ORDER BY creator_reward_points DESC, meal_kit_order_count DESC, cooked_count DESC, review_count DESC, r.title ASC;
+        `;
+
+        const summaryQuery = `
+            WITH per_recipe AS (
+                WITH review_stats AS (
+                    SELECT recipe_id, COUNT(*) AS review_count
+                    FROM "Comment"
+                    WHERE rating IS NOT NULL
+                    GROUP BY recipe_id
+                ),
+                cook_stats AS (
+                    SELECT recipe_id, COUNT(*) AS cooked_count
+                    FROM "Comment"
+                    WHERE cooked_at IS NOT NULL
+                    GROUP BY recipe_id
+                ),
+                purchase_stats AS (
+                    SELECT
+                        c.recipe_id,
+                        COUNT(DISTINCT o.order_id) AS meal_kit_order_count
+                    FROM "Cart" c
+                    JOIN "Order" o ON o.cart_id = c.cart_id
+                    WHERE o.status = 'confirmed'
+                    GROUP BY c.recipe_id
+                )
+                SELECT
+                    r.recipe_id,
+                    COALESCE(rs.review_count, 0) AS review_count,
+                    COALESCE(cs.cooked_count, 0) AS cooked_count,
+                    COALESCE(ps.meal_kit_order_count, 0) AS meal_kit_order_count
+                FROM "Recipe" r
+                LEFT JOIN review_stats rs ON rs.recipe_id = r.recipe_id
+                LEFT JOIN cook_stats cs ON cs.recipe_id = r.recipe_id
+                LEFT JOIN purchase_stats ps ON ps.recipe_id = r.recipe_id
+                WHERE r.creator_id = $1
+            )
+            SELECT
+                COUNT(*)::int AS total_recipes,
+                COALESCE(SUM(cooked_count), 0)::int AS total_cooked_count,
+                COALESCE(SUM(review_count), 0)::int AS total_review_count,
+                COALESCE(SUM(meal_kit_order_count), 0)::int AS total_meal_kit_order_count,
+                (
+                    COALESCE(SUM(meal_kit_order_count), 0) * 10
+                    + COALESCE(SUM(cooked_count), 0) * 2
+                    + COALESCE(SUM(review_count), 0)
+                )::int AS total_creator_reward_points
+            FROM per_recipe;
+        `;
+
+        const [recipesResult, summaryResult] = await Promise.all([
+            pool.query(perRecipeQuery, [userId]),
+            pool.query(summaryQuery, [userId])
+        ]);
+
+        res.json({
+            summary: summaryResult.rows[0],
+            recipes: recipesResult.rows
+        });
+    } catch (error) {
+        console.error('CREATOR ROYALTY DASHBOARD ERROR:', error);
+        res.status(500).json({ message: 'Error fetching creator royalty dashboard.', detail: error.message });
+    }
+});
+
 // LOG a Cook (Increases Royalty)
 app.post('/api/recipe/cook', async (req, res) => {
     const { recipeId, userId } = req.body;
