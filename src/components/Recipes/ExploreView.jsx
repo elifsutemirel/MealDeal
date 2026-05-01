@@ -9,8 +9,6 @@ export const ExploreView = ({ onSelectRecipe }) => {
   const [dietFilter, setDietFilter] = useState('All');
   const [maxTime, setMaxTime] = useState(60);
   const [minRating, setMinRating] = useState(0);
-  const [recipes, setRecipes] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/recipes')
