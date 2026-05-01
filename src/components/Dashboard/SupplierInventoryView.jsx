@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 
 const InventoryRow = ({ item, onUpdate, onDelete }) => {
-const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
   const [qty, setQty] = useState(item.available_qty);
   const hasChanged = price !== item.price || qty !== item.available_qty;
@@ -107,21 +106,21 @@ export const SupplierInventoryView = ({ user }) => {
       await fetch('/api/supplier/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           ingredient_name: newItem.ingredient_name,
-          unit: newItem.unit, 
-          price: parseFloat(newItem.price), 
+          unit: newItem.unit,
+          price: parseFloat(newItem.price),
           package_size: newItem.package_size,
-          available_qty: parseFloat(newItem.available_qty), 
-          supplier_id: user.id 
+          available_qty: parseFloat(newItem.available_qty),
+          supplier_id: user.id
         })
       });
       setShowAdd(false);
       setNewItem({ ingredient_name: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
       fetchInventory();
       fetchIngredients(); // Refresh ingredients list in case a new one was added
-    } catch (err) { 
-      console.error(err); 
+    } catch (err) {
+      console.error(err);
       alert('Failed to add item');
     }
   };
@@ -152,10 +151,10 @@ export const SupplierInventoryView = ({ user }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ingredient</label>
-              <input 
-                list="ingredients-list" 
+              <input
+                list="ingredients-list"
                 value={newItem.ingredient_name}
-                onChange={e => setNewItem({ ...newItem, ingredient_name: e.target.value })} 
+                onChange={e => setNewItem({ ...newItem, ingredient_name: e.target.value })}
                 placeholder="Type or select..."
                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 transition-all outline-none"
               />
