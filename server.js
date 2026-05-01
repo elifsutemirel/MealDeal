@@ -136,57 +136,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 // --- RECIPE ENDPOINTS ---
 
-// GET All Public Recipes
-app.get('/api/recipes', async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT r.recipe_id as id, r.title, r.media_url as image, r.dietary_tag as category,
-                   r.cook_time_min as time, r.difficulty_level as difficulty, r.preparation_steps as steps,
-                   u.username as chef
-            FROM "Recipe" r
-            JOIN "User" u ON r.creator_id = u.user_id
-            WHERE r.visibility = 'public'
-            ORDER BY r.creation_time DESC
-        `);
 
-        const recipes = result.rows;
-
-        for (let recipe of recipes) {
-            const ingResult = await pool.query(`
-                SELECT ri.qty as "baseQty", ri.unit, i.ingredient_id as id, i.name
-                FROM "Recipe_Ingredient" ri
-                JOIN "Ingredient" i ON ri.ingredient_id = i.ingredient_id
-                WHERE ri.recipe_id = $1
-            `, [recipe.id]);
-
-            recipe.ingredients = ingResult.rows.map(ing => ({
-                id: ing.id,
-                name: ing.name,
-                baseQty: Number(ing.baseQty),
-                unit: ing.unit,
-                pricePerUnit: 1.99,
-                taxonomy: 'Produce'
-            }));
-
-            if (recipe.steps) {
-                recipe.steps = recipe.steps.split('\n').filter(s => s.trim().length > 0);
-            } else {
-                recipe.steps = [];
-            }
-
-            recipe.rating = 5.0;
-            recipe.reviews = [];
-
-            if (!recipe.category) recipe.category = 'Standard';
-            if (!recipe.image) recipe.image = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800';
-        }
-
-        res.json(recipes);
-    } catch (error) {
-        console.error("Error fetching recipes:", error);
-        res.status(500).json({ message: 'Error fetching recipes.' });
-    }
-});
 
 // CREATE Recipe
 app.post('/api/recipes', async (req, res) => {
@@ -668,6 +618,57 @@ app.delete('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+// --- SUPPLIER ORDER ENDPOINTS ---
+
+// GET Supplier Orders
+app.get('/api/supplier/orders', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+
+    try {
+        const query = `
+            SELECT 
+                o.order_id, 
+                o.order_date, 
+                o.total_amount, 
+                o.status,
+                u.username AS buyer_name,
+                json_agg(json_build_object(
+                    'item_name', i.name,
+                    'qty', ci.qty,
+                    'price', ci.unit_price,
+                    'unit', si.unit
+                )) AS items
+            FROM "Order" o
+            JOIN "Cart" c ON o.cart_id = c.cart_id
+            JOIN "User" u ON c.user_id = u.user_id
+            JOIN "CartItem" ci ON ci.cart_id = c.cart_id
+            JOIN "SupplierInventory" si ON ci.inventory_id = si.inventory_id
+            JOIN "Ingredient" i ON si.ingredient_id = i.ingredient_id
+            WHERE si.supplier_id = $1
+            GROUP BY o.order_id, u.username
+            ORDER BY o.order_date DESC;
+        `;
+        const result = await pool.query(query, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('SUPPLIER ORDERS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching supplier orders.' });
+    }
+});
+
+// FULFILL Order
+app.put('/api/supplier/orders/:id/fulfill', async (req, res) => {
+    const orderId = req.params.id;
+    try {
+        await pool.query('UPDATE "Order" SET status = \'fulfilled\' WHERE order_id = $1', [orderId]);
+        res.json({ message: 'Order marked as fulfilled.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fulfilling order.' });
+    }
+});
+
 // --- MEAL LIST ENDPOINTS ---
 
 // GET All Meal Lists for a User
@@ -737,8 +738,7 @@ app.get('/api/recipes', async (req, res) => {
                         'status', CASE 
                                     WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
                                     ELSE 'missing' 
-                                  END
-                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                                  END,
                         'suppliers', (
                             SELECT COALESCE(json_agg(json_build_object(
                                 'inventory_id', si.inventory_id,

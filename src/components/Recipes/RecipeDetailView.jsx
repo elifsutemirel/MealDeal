@@ -5,12 +5,18 @@ import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
-  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ 
-    ...i, 
-    selected: true,
-    selectedSupplier: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0] : null,
-    pricePerUnit: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0].price : i.pricePerUnit
-  })));
+  const [ingredientsState, setIngredientsState] = useState(
+    recipe.ingredients.map(i => {
+      // Find cheapest supplier as default
+      const sortedSuppliers = [...(i.suppliers || [])].filter(s => typeof s === 'object').sort((a, b) => a.price - b.price);
+      return { 
+        ...i, 
+        selected: true, 
+        selectedInventoryId: sortedSuppliers[0]?.inventory_id || sortedSuppliers[0]?.id || null,
+        currentPrice: sortedSuppliers[0]?.price || i.pricePerUnit // Use db price if available
+      };
+    })
+  );
 
   // AI substitution state
   const [aiTargetIngredient, setAiTargetIngredient] = useState(null);
@@ -78,15 +84,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     setIngredientsState(prev => prev.map(i => i.id === id ? { ...i, selected: !i.selected } : i));
   };
 
-  const handleSupplierChange = (id, supplierId) => {
-    setIngredientsState(prev => prev.map(i => {
-      if (i.id === id) {
-        const sup = i.suppliers.find(s => s.supplier_id === parseInt(supplierId));
-        return { ...i, selectedSupplier: sup, pricePerUnit: sup ? sup.price : i.pricePerUnit };
-      }
-      return i;
-    }));
-  };
+
 
   const handleRequestAI = (ingredient) => {
     setAiTargetIngredient(ingredient);
@@ -233,24 +231,8 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       />
                       <div>
                         <p className={`font-bold text-slate-800 dark:text-white ${!ing.selected && 'line-through'}`}>{ing.name}</p>
-                        {ing.suppliers && ing.suppliers.length > 0 ? (
-                          <div className="mt-1">
-                            <select 
-                              value={ing.selectedSupplier?.supplier_id || ''} 
-                              onChange={(e) => handleSupplierChange(ing.id, e.target.value)}
-                              disabled={!ing.selected}
-                              className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 border-none rounded px-2 py-1 outline-none"
-                            >
-                              {ing.suppliers.map(s => (
-                                <option key={s.supplier_id} value={s.supplier_id}>
-                                  {s.supplier_name} ({s.location_name}) - ${s.price}/{ing.unit}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy || 'No local supplier'}</p>
-                        )}
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy}</p>
+
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-right">
@@ -268,27 +250,27 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       <div className="w-32 flex flex-col items-end gap-1">
                         <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
                         {user && (
-                          ing.suppliers && ing.suppliers.length > 0 ? (
+                          ing.suppliers && ing.suppliers.length > 0 && typeof ing.suppliers[0] === 'object' ? (
                             <div className="mt-2 w-full">
                               <select 
                                 value={ing.selectedInventoryId || ''} 
                                 onChange={(e) => {
                                   const invId = parseInt(e.target.value);
-                                  const selectedSup = ing.suppliers.find(s => s.id === invId);
+                                  const selectedSup = ing.suppliers.find(s => (s.inventory_id || s.id) === invId);
                                   setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: invId, currentPrice: selectedSup?.price || p.currentPrice } : p));
                                 }}
                                 className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-lg p-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-1 ring-emerald-500/20"
                               >
                                 {ing.suppliers.map((sup) => (
-                                  <option key={sup.id} value={sup.id}>
-                                    {sup.name} (${Number(sup.price).toFixed(2)})
+                                  <option key={sup.inventory_id || sup.id} value={sup.inventory_id || sup.id}>
+                                    {sup.supplier_name || sup.name} (${Number(sup.price).toFixed(2)})
                                   </option>
                                 ))}
                               </select>
                             </div>
                           ) : (
                             <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
-                              Missing
+                              {ing.suppliers && ing.suppliers.length > 0 ? 'Mock Source' : 'Missing'}
                             </div>
                           )
                         )}

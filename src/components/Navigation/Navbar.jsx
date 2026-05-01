@@ -10,7 +10,7 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
         <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">mealDeal</span>
       </div>
       <div className="hidden md:flex items-center gap-6">
-        {['explore', 'marketplace', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
+        {(!user || user.role !== 'Local Supplier') && ['explore', 'marketplace', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
           <button key={tab} onClick={() => setTab(tab)} className={`text-sm font-bold capitalize transition-all ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
             {tab.replace('-', ' ')}
           </button>
@@ -21,9 +21,14 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
           </button>
         )}
         {user && user.role === 'Local Supplier' && (
-          <button onClick={() => setTab('inventory')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'inventory' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
-            Inventory
-          </button>
+          <>
+            <button onClick={() => setTab('inventory')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'inventory' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
+              Inventory
+            </button>
+            <button onClick={() => setTab('orders')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'orders' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
+              Orders
+            </button>
+          </>
         )}
         {user && (user.role === 'Verified Chef' || user.role === 'Home Cook') && (
           <button onClick={() => setTab('create-recipe')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'create-recipe' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
