@@ -427,13 +427,120 @@ app.get('/api/recipes', async (req, res) => {
             image: MOCK_IMAGES[index % MOCK_IMAGES.length],
             ingredients: row.ingredients,
             steps: ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
-            substitutions: []
+            substitutions: [],
+            reviews: []
         }));
+
+        // Fetch reviews for all recipes
+        const recipeIds = recipes.map(r => r.id);
+        if (recipeIds.length > 0) {
+            const reviewsResult = await pool.query(
+                `SELECT c.comment_id, c.recipe_id, c.comment_text, c.rating, c.creation_time, u.username
+                 FROM "Comment" c
+                 JOIN "User" u ON u.user_id = c.user_id
+                 WHERE c.recipe_id = ANY($1) AND c.comment_text IS NOT NULL
+                 ORDER BY c.creation_time DESC`,
+                [recipeIds]
+            );
+            // Attach reviews to their recipes
+            for (const review of reviewsResult.rows) {
+                const recipe = recipes.find(r => r.id === review.recipe_id);
+                if (recipe) {
+                    recipe.reviews.push({
+                        id: review.comment_id,
+                        user: review.username,
+                        comment: review.comment_text,
+                        rating: review.rating,
+                        date: review.creation_time
+                    });
+                }
+            }
+        }
 
         res.json(recipes);
     } catch (error) {
         console.error('RECIPES API ERROR:', error);
         res.status(500).json({ message: 'Error fetching recipes.', detail: error.message });
+    }
+});
+
+// =============================================================
+// REVIEW ENDPOINTS
+// =============================================================
+
+// GET reviews for a recipe
+app.get('/api/recipe/:id/reviews', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT c.comment_id, c.comment_text, c.rating, c.creation_time, u.username
+             FROM "Comment" c
+             JOIN "User" u ON u.user_id = c.user_id
+             WHERE c.recipe_id = $1 AND c.comment_text IS NOT NULL
+             ORDER BY c.creation_time DESC`,
+            [req.params.id]
+        );
+        res.json(result.rows.map(r => ({
+            id: r.comment_id,
+            user: r.username,
+            comment: r.comment_text,
+            rating: r.rating,
+            date: r.creation_time
+        })));
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching reviews.' });
+    }
+});
+
+// POST a new review (only Home Cooks and Verified Chefs)
+app.post('/api/recipe/:id/review', async (req, res) => {
+    const { userId, rating, comment } = req.body;
+    const recipeId = req.params.id;
+
+    if (!userId || !comment || !rating) {
+        return res.status(400).json({ message: 'userId, rating, and comment are required.' });
+    }
+    if (rating < 1 || rating > 5) {
+        return res.status(400).json({ message: 'Rating must be between 1 and 5.' });
+    }
+
+    try {
+        // Verify user exists
+        const userCheck = await pool.query('SELECT user_id, username FROM "User" WHERE user_id = $1', [userId]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Check if recipe exists in the DB
+        const recipeCheck = await pool.query('SELECT recipe_id FROM "Recipe" WHERE recipe_id = $1', [recipeId]);
+        if (recipeCheck.rows.length === 0) {
+            // Recipe is from mock/static data, not in DB — return a simulated success
+            return res.status(201).json({
+                id: Date.now(),
+                user: userCheck.rows[0].username,
+                comment,
+                rating,
+                date: new Date().toISOString()
+            });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO "Comment" (user_id, recipe_id, comment_text, rating, creation_time, rated_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             RETURNING comment_id, creation_time`,
+            [userId, recipeId, comment, rating]
+        );
+
+        res.status(201).json({
+            id: result.rows[0].comment_id,
+            user: userCheck.rows[0].username,
+            comment,
+            rating,
+            date: result.rows[0].creation_time
+        });
+    } catch (error) {
+        console.error('REVIEW POST ERROR:', error);
+        res.status(500).json({ message: 'Error posting review.', detail: error.message });
     }
 });
 
