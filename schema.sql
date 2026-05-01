@@ -219,16 +219,16 @@ CREATE TABLE "HomeCook_Challenge" (
 -- =============================================================
 
 CREATE TABLE "MealList" (
-    list_id       SERIAL       PRIMARY KEY,
+    meal_list_id  SERIAL       PRIMARY KEY,
     user_id       INT          NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
     name          VARCHAR(255) NOT NULL,
-    creation_time TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    description   TEXT,
+    created_date  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE "MealListItem" (
-    item_no   SERIAL      PRIMARY KEY,
-    list_id   INT         NOT NULL REFERENCES "MealList"(list_id)   ON DELETE CASCADE,
-    recipe_id INT         NOT NULL REFERENCES "Recipe"(recipe_id)   ON DELETE CASCADE,
-    added_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    note      TEXT
+    meal_list_item_id SERIAL      PRIMARY KEY,
+    meal_list_id      INT         NOT NULL REFERENCES "MealList"(meal_list_id) ON DELETE CASCADE,
+    recipe_id         INT         NOT NULL REFERENCES "Recipe"(recipe_id)     ON DELETE CASCADE,
+    added_date        TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

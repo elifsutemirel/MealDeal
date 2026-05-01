@@ -58,7 +58,7 @@ export const ChefAnalyticsView = ({ user }) => {
           <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">
             {!Array.isArray(data) || data.length === 0 ? (
               <tr>
-                <td colSpan="6" className="px-10 py-24 text-center">
+                <td colSpan="5" className="px-10 py-24 text-center">
                   <p className="text-slate-300 dark:text-slate-600 font-bold uppercase tracking-widest text-xs">No recipe data available yet.</p>
                 </td>
               </tr>

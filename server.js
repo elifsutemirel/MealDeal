@@ -260,6 +260,119 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+// --- MEAL LIST ENDPOINTS ---
+
+// GET All Meal Lists for a User
+app.get('/api/meallist', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+
+    try {
+        const query = `
+            SELECT ml.*, COUNT(DISTINCT mli.recipe_id) as recipe_count
+            FROM "MealList" ml
+            LEFT JOIN "MealListItem" mli ON mli.meal_list_id = ml.meal_list_id
+            WHERE ml.user_id = $1
+            GROUP BY ml.meal_list_id
+            ORDER BY ml.created_date DESC;
+        `;
+        const result = await pool.query(query, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching meal lists.' });
+    }
+});
+
+// GET Recipes in a Meal List
+app.get('/api/meallist/:id/recipes', async (req, res) => {
+    const mealListId = req.params.id;
+    try {
+        const query = `
+            SELECT r.* FROM "Recipe" r
+            JOIN "MealListItem" mli ON mli.recipe_id = r.recipe_id
+            WHERE mli.meal_list_id = $1
+            ORDER BY mli.added_date DESC;
+        `;
+        const result = await pool.query(query, [mealListId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching recipes.' });
+    }
+});
+
+// CREATE a new Meal List
+app.post('/api/meallist', async (req, res) => {
+    const { user_id, name, description } = req.body;
+    try {
+        const query = `
+            INSERT INTO "MealList" (user_id, name, description, created_date)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            RETURNING *;
+        `;
+        const result = await pool.query(query, [user_id, name, description || '']);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error creating meal list.' });
+    }
+});
+
+// ADD Recipe to Meal List
+app.post('/api/meallist/:id/recipe', async (req, res) => {
+    const mealListId = req.params.id;
+    const { recipe_id } = req.body;
+    try {
+        // Check if already exists
+        const existing = await pool.query(
+            'SELECT * FROM "MealListItem" WHERE meal_list_id = $1 AND recipe_id = $2',
+            [mealListId, recipe_id]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ message: 'Recipe already in this meal list.' });
+        }
+
+        const query = `
+            INSERT INTO "MealListItem" (meal_list_id, recipe_id, added_date)
+            VALUES ($1, $2, CURRENT_TIMESTAMP)
+            RETURNING *;
+        `;
+        const result = await pool.query(query, [mealListId, recipe_id]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error adding recipe to meal list.' });
+    }
+});
+
+// REMOVE Recipe from Meal List
+app.delete('/api/meallist/:id/recipe/:recipeId', async (req, res) => {
+    const { id, recipeId } = req.params;
+    try {
+        await pool.query(
+            'DELETE FROM "MealListItem" WHERE meal_list_id = $1 AND recipe_id = $2',
+            [id, recipeId]
+        );
+        res.json({ message: 'Recipe removed from meal list.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error removing recipe.' });
+    }
+});
+
+// DELETE a Meal List
+app.delete('/api/meallist/:id', async (req, res) => {
+    const mealListId = req.params.id;
+    try {
+        await pool.query('DELETE FROM "MealList" WHERE meal_list_id = $1', [mealListId]);
+        res.json({ message: 'Meal list deleted.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error deleting meal list.' });
+    }
+});
+
 // Client-side error logging endpoint
 app.post('/api/client-error', (req, res) => {
     try {

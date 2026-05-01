@@ -5,12 +5,21 @@ import { CHALLENGES } from '../../data/challenges';
 
 export const ChallengesView = () => {
   const [filter, setFilter] = useState('active');
+  const [joinedChallenges, setJoinedChallenges] = useState([]);
   
   // Challenges are imported from data/ as an ES module
 
   const filteredChallenges = CHALLENGES.filter(c =>
     filter === 'all' ? true : c.status === filter
   );
+
+  const handleJoinChallenge = (challengeId) => {
+    if (!joinedChallenges.includes(challengeId)) {
+      setJoinedChallenges([...joinedChallenges, challengeId]);
+    }
+  };
+
+  const isJoined = (challengeId) => joinedChallenges.includes(challengeId);
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8 pb-20">
@@ -81,11 +90,16 @@ export const ChallengesView = () => {
 
               <div className="flex justify-between items-center text-xs">
                 <span className="text-tertiary">👥 {challenge.participants} joined</span>
-                <button className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all ${challenge.status === 'active'
-                  ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-                  : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
+                <button 
+                  onClick={() => handleJoinChallenge(challenge.id)}
+                  className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all ${
+                    isJoined(challenge.id)
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-500'
+                      : challenge.status === 'active'
+                      ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                      : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
                   }`}>
-                  {challenge.status === 'active' ? 'Join' : 'Notify'}
+                  {isJoined(challenge.id) ? '✓ Joined' : challenge.status === 'active' ? 'Join' : 'Notify'}
                 </button>
               </div>
             </div>

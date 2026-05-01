@@ -1,6 +1,12 @@
 // Exponential Backoff Fetch for Gemini API
 export const fetchGeminiWithBackoff = async (prompt, systemPrompt) => {
-  const apiKey = ""; // API Key injected at runtime
+  // API Key should be set via environment variable
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+  
+  if (!apiKey) {
+    throw new Error('Gemini API key is not configured. Please add VITE_GEMINI_API_KEY to your .env file or environment variables.');
+  }
+  
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
