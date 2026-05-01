@@ -10,6 +10,7 @@ import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
 import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
+import { ProfileView } from './components/Profile/ProfileView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -99,6 +100,7 @@ export default function App() {
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
+            {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
           </>
         )}
       </main>

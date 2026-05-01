@@ -134,6 +134,72 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// UPDATE PROFILE (username, email)
+app.put('/api/auth/profile', async (req, res) => {
+    const { user_id, username, email } = req.body;
+    if (!user_id || !username || !email) {
+        return res.status(400).json({ message: 'Missing required fields.' });
+    }
+
+    try {
+        // Check if another user has this username or email
+        const existing = await pool.query(
+            'SELECT user_id, username, email FROM "User" WHERE (email = $1 OR username = $2) AND user_id != $3',
+            [email, username, user_id]
+        );
+        
+        if (existing.rows.length > 0) {
+            const isEmailDup = existing.rows.some(r => r.email === email);
+            return res.status(400).json({
+                message: isEmailDup ? 'Email already exists.' : 'Username already exists.'
+            });
+        }
+
+        const result = await pool.query(
+            'UPDATE "User" SET username = $1, email = $2 WHERE user_id = $3 RETURNING user_id, username, email',
+            [username, email, user_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error("PROFILE UPDATE ERROR:", error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+});
+
+// CHANGE PASSWORD
+app.put('/api/auth/password', async (req, res) => {
+    const { user_id, current_password, new_password } = req.body;
+    if (!user_id || !current_password || !new_password) {
+        return res.status(400).json({ message: 'Missing required fields.' });
+    }
+
+    try {
+        const userRes = await pool.query('SELECT password_hash FROM "User" WHERE user_id = $1', [user_id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const isMatch = await bcrypt.compare(current_password, userRes.rows[0].password_hash);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Incorrect current password.' });
+        }
+
+        const newHash = await bcrypt.hash(new_password, 10);
+        await pool.query('UPDATE "User" SET password_hash = $1 WHERE user_id = $2', [newHash, user_id]);
+
+        res.json({ message: 'Password updated successfully.' });
+    } catch (error) {
+        console.error("PASSWORD CHANGE ERROR:", error);
+        res.status(500).json({ message: 'Internal server error.' });
+    }
+});
+
+
 // --- CHEF ROYALTY ENDPOINTS ---
 
 // GET Chef Royalty Matrix
