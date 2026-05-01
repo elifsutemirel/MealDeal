@@ -260,6 +260,194 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+// =============================================================
+// CHALLENGE ENDPOINTS
+// =============================================================
+
+// Seed helper — runs once on startup if the table is empty
+async function seedChallengesIfEmpty() {
+    const count = await pool.query('SELECT COUNT(*) FROM "KitchenChallenge"');
+    if (parseInt(count.rows[0].count) > 0) return;
+
+    const SEED = [
+        { title: 'Zero Waste Week',            description: 'Cook only with ingredients you have at home. No new purchases!', start_date: '2026-05-01', end_date: '2026-05-07' },
+        { title: 'Under 20 Minutes Challenge', description: 'Prepare a delicious meal in 20 minutes or less!',                start_date: '2026-05-01', end_date: '2026-05-14' },
+        { title: 'Vegan Venture',              description: 'Try 5 different vegan recipes this month!',                        start_date: '2026-05-01', end_date: '2026-05-31' },
+        { title: 'Keto King',                  description: 'Complete 10 keto-friendly meals and log your progress!',           start_date: '2026-05-01', end_date: '2026-05-21' },
+        { title: 'Fusion Flavor Fest',         description: 'Cook one recipe from 3 different cuisines!',                       start_date: '2026-06-01', end_date: '2026-06-14' },
+        { title: 'Budget Gourmet',             description: 'Create a 3-course meal for under $15!',                            start_date: '2026-05-01', end_date: '2026-12-31' },
+    ];
+
+    for (const c of SEED) {
+        await pool.query(
+            `INSERT INTO "KitchenChallenge" (title, description, start_date, end_date) VALUES ($1, $2, $3, $4)`,
+            [c.title, c.description, c.start_date, c.end_date]
+        );
+    }
+    console.log('Seeded KitchenChallenge table with', SEED.length, 'challenges.');
+}
+
+// GET /api/challenges — list all challenges with recipe counts
+app.get('/api/challenges', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                kc.challenge_id,
+                kc.title,
+                kc.description,
+                kc.start_date,
+                kc.end_date,
+                COUNT(DISTINCT hcc.user_id)       AS participants,
+                COUNT(DISTINCT kcr.recipe_id)     AS recipe_count,
+                CASE
+                    WHEN kc.start_date > CURRENT_DATE THEN 'upcoming'
+                    WHEN kc.end_date   < CURRENT_DATE THEN 'completed'
+                    ELSE 'active'
+                END AS status
+            FROM "KitchenChallenge" kc
+            LEFT JOIN "HomeCook_Challenge"      hcc ON hcc.challenge_id = kc.challenge_id
+            LEFT JOIN "KitchenChallenge_Recipe" kcr ON kcr.challenge_id = kc.challenge_id
+            GROUP BY kc.challenge_id
+            ORDER BY kc.start_date DESC;
+        `);
+
+        const DISPLAY = {
+            'Zero Waste Week':            { icon: '🌱', difficulty: 'Hard',   duration: '7 days',   prize: 'Green Leaf Badge + 50 MealCoins',        image: 'https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&q=80&w=600' },
+            'Under 20 Minutes Challenge': { icon: '⚡', difficulty: 'Medium', duration: '14 days',  prize: 'Speed Chef Badge + 30 MealCoins',         image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&q=80&w=600' },
+            'Vegan Venture':              { icon: '🥬', difficulty: 'Easy',   duration: '30 days',  prize: 'Plant-Based Master Badge + 75 MealCoins', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600' },
+            'Keto King':                  { icon: '🥩', difficulty: 'Hard',   duration: '21 days',  prize: 'Keto Champion Badge + 100 MealCoins',     image: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&q=80&w=600' },
+            'Fusion Flavor Fest':         { icon: '🌍', difficulty: 'Medium', duration: '14 days',  prize: 'Global Palate Badge + 40 MealCoins',      image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=600' },
+            'Budget Gourmet':             { icon: '💎', difficulty: 'Hard',   duration: 'Ongoing',  prize: 'Deal Hunter Badge + 60 MealCoins',        image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' },
+        };
+
+        const rows = result.rows.map(r => ({
+            ...r,
+            participants: parseInt(r.participants) || 0,
+            recipe_count: parseInt(r.recipe_count) || 0,
+            ...(DISPLAY[r.title] || { icon: '🍽️', difficulty: 'Medium', duration: 'Ongoing', prize: 'Badge', image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' }),
+        }));
+
+        res.json(rows);
+    } catch (error) {
+        console.error('CHALLENGES LIST ERROR:', error);
+        res.status(500).json({ message: 'Error fetching challenges.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/joined?userId=X
+app.get('/api/challenges/joined', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+    try {
+        const result = await pool.query(
+            'SELECT challenge_id FROM "HomeCook_Challenge" WHERE user_id = $1',
+            [userId]
+        );
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching joined challenges.' });
+    }
+});
+
+// POST /api/challenges/:id/join
+app.post('/api/challenges/:id/join', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+    try {
+        const homeCookCheck = await pool.query('SELECT user_id FROM "HomeCook" WHERE user_id = $1', [userId]);
+        if (homeCookCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Only Home Cooks can join challenges.' });
+        }
+        await pool.query(
+            `INSERT INTO "HomeCook_Challenge" (user_id, challenge_id, joined_at)
+             VALUES ($1, $2, CURRENT_TIMESTAMP)
+             ON CONFLICT (user_id, challenge_id) DO NOTHING`,
+            [userId, challengeId]
+        );
+        res.json({ message: 'Joined successfully!' });
+    } catch (error) {
+        console.error('JOIN CHALLENGE ERROR:', error);
+        res.status(500).json({ message: 'Error joining challenge.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/progress?userId=X
+app.get('/api/challenges/:id/progress', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+    try {
+        const totalRes = await pool.query(
+            'SELECT COUNT(*) AS total FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1',
+            [challengeId]
+        );
+        const total = parseInt(totalRes.rows[0].total);
+
+        const cookedRes = await pool.query(`
+            SELECT DISTINCT c.recipe_id
+            FROM "Comment" c
+            JOIN "KitchenChallenge_Recipe" kcr
+              ON kcr.recipe_id = c.recipe_id AND kcr.challenge_id = $1
+            WHERE c.user_id = $2 AND c.cooked_at IS NOT NULL`,
+            [challengeId, userId]
+        );
+        const cooked_recipe_ids = cookedRes.rows.map(r => r.recipe_id);
+        res.json({ cooked_count: cooked_recipe_ids.length, total, cooked_recipe_ids });
+    } catch (error) {
+        console.error('PROGRESS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching progress.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/leaderboard
+app.get('/api/challenges/:id/leaderboard', async (req, res) => {
+    const challengeId = req.params.id;
+    try {
+        const result = await pool.query(`
+            SELECT
+                u.user_id,
+                u.username,
+                COUNT(DISTINCT c.recipe_id) AS cooked_count
+            FROM "HomeCook_Challenge" hcc
+            JOIN "User" u ON u.user_id = hcc.user_id
+            LEFT JOIN "Comment" c
+                ON c.user_id = hcc.user_id
+               AND c.cooked_at IS NOT NULL
+               AND c.recipe_id IN (
+                   SELECT recipe_id FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1
+               )
+            WHERE hcc.challenge_id = $1
+            GROUP BY u.user_id, u.username
+            ORDER BY cooked_count DESC
+            LIMIT 10;
+        `, [challengeId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('LEADERBOARD ERROR:', error);
+        res.status(500).json({ message: 'Error fetching leaderboard.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/recipes
+app.get('/api/challenges/:id/recipes', async (req, res) => {
+    const challengeId = req.params.id;
+    try {
+        const result = await pool.query(`
+            SELECT r.recipe_id, r.title, r.cook_time_min, r.difficulty_level
+            FROM "KitchenChallenge_Recipe" kcr
+            JOIN "Recipe" r ON r.recipe_id = kcr.recipe_id
+            WHERE kcr.challenge_id = $1
+            ORDER BY r.title;
+        `, [challengeId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('CHALLENGE RECIPES ERROR:', error);
+        res.status(500).json({ message: 'Error fetching challenge recipes.', detail: error.message });
+    }
+});
+
 // Client-side error logging endpoint
 app.post('/api/client-error', (req, res) => {
     try {
@@ -282,6 +470,7 @@ app.listen(PORT, async () => {
     try {
         await pool.query('SELECT NOW()');
         console.log('PostgreSQL Connected Successfully');
+        await seedChallengesIfEmpty();
     } catch (err) {
         console.error('PostgreSQL Connection Error:', err.message);
     }

@@ -73,7 +73,7 @@ export default function App() {
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} />}
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
-            {currentTab === 'challenges' && <ChallengesView />}
+            {currentTab === 'challenges' && <ChallengesView user={user} />}
             {currentTab === 'my-meals' && (
               <div className="py-24 text-center">
                 <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300 dark:text-slate-600"><ListPlus size={32} /></div>
