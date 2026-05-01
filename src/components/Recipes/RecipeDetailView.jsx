@@ -7,10 +7,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const [activeSubView, setActiveSubView] = useState('ingredients');
   const [ingredientsState, setIngredientsState] = useState(
     recipe.ingredients.map(i => {
+      // Normalize suppliers: convert strings to objects with synthetic IDs
+      const normalizedSuppliers = (i.suppliers || []).map((s, idx) => 
+        typeof s === 'object' ? s : { id: `mock-${idx}`, location_name: s, price: i.pricePerUnit || 0 }
+      );
       // Find cheapest supplier as default
-      const sortedSuppliers = [...(i.suppliers || [])].filter(s => typeof s === 'object').sort((a, b) => a.price - b.price);
+      const sortedSuppliers = [...normalizedSuppliers].sort((a, b) => (a.price || 0) - (b.price || 0));
+      
       return { 
         ...i, 
+        suppliers: normalizedSuppliers,
         selected: true, 
         selectedInventoryId: sortedSuppliers[0]?.inventory_id || sortedSuppliers[0]?.id || null,
         currentPrice: sortedSuppliers[0]?.price || i.pricePerUnit // Use db price if available
@@ -249,30 +255,34 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
                       <div className="w-32 flex flex-col items-end gap-1">
                         <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
-                        {user && (
-                          ing.suppliers && ing.suppliers.length > 0 && typeof ing.suppliers[0] === 'object' ? (
-                            <div className="mt-2 w-full">
-                              <select 
-                                value={ing.selectedInventoryId || ''} 
-                                onChange={(e) => {
-                                  const invId = parseInt(e.target.value);
-                                  const selectedSup = ing.suppliers.find(s => (s.inventory_id || s.id) === invId);
-                                  setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: invId, currentPrice: selectedSup?.price || p.currentPrice } : p));
-                                }}
-                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-lg p-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-1 ring-emerald-500/20"
-                              >
-                                {ing.suppliers.map((sup) => (
-                                  <option key={sup.inventory_id || sup.id} value={sup.inventory_id || sup.id}>
-                                    {sup.location_name || sup.supplier_name || sup.name} (${Number(sup.price).toFixed(2)})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          ) : (
-                            <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
-                              {ing.suppliers && ing.suppliers.length > 0 ? 'Mock Source' : 'Missing'}
-                            </div>
-                          )
+                        {user && ing.suppliers && ing.suppliers.length > 0 && (
+                          <div className="mt-2 w-full flex flex-wrap justify-end gap-1.5">
+                            {ing.suppliers.map((sup) => {
+                              const isSelected = (ing.selectedInventoryId || '').toString() === (sup.inventory_id || sup.id).toString();
+                              return (
+                                <button
+                                  key={sup.inventory_id || sup.id}
+                                  onClick={() => {
+                                    const val = (sup.inventory_id || sup.id).toString();
+                                    setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: val, currentPrice: sup.price || p.currentPrice } : p));
+                                  }}
+                                  className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${
+                                    isSelected 
+                                      ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' 
+                                      : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-500'
+                                  }`}
+                                >
+                                  {sup.location_name || sup.supplier_name || sup.name}
+                                  {sup.price !== undefined && ` • $${Number(sup.price).toFixed(2)}`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {user && (!ing.suppliers || ing.suppliers.length === 0) && (
+                          <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
+                            Missing
+                          </div>
                         )}
                       </div>
                     </div>
