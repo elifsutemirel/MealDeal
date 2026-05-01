@@ -391,7 +391,11 @@ app.get('/api/recipes', async (req, res) => {
                         'name', i.name,
                         'baseQty', ri.qty,
                         'unit', ri.unit,
-                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10)
+                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                        'status', CASE 
+                                    WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
+                                    ELSE 'missing' 
+                                  END
                     )), '[]'::json)
                     FROM "Recipe_Ingredient" ri
                     JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id

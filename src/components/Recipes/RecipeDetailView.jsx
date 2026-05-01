@@ -180,20 +180,26 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-right">
-                      {/* Interactive AI Suggestion Button per Ingredient */}
-                      <button
-                        onClick={() => handleRequestAI(ing)}
-                        className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
-                        title={`Ask AI to substitute ${ing.name}`}
-                      >
-                        <Sparkles size={16} />
-                      </button>
+                      {/* Interactive AI Suggestion Button per Ingredient (only if missing and logged in) */}
+                      {user && ing.status === 'missing' && (
+                        <button
+                          onClick={() => handleRequestAI(ing)}
+                          className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
+                          title={`Ask AI to substitute ${ing.name}`}
+                        >
+                          <Sparkles size={16} />
+                        </button>
+                      )}
 
-                      <div className="w-20">
-                        <p className="font-black text-slate-900">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
-                        <span className={`text-[9px] font-black uppercase tracking-tighter flex items-center gap-1 justify-end ${ing.status === 'available' ? 'text-emerald-500' : ing.status === 'missing' ? 'text-red-500' : 'text-orange-500'}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${ing.status === 'available' ? 'bg-emerald-500' : ing.status === 'missing' ? 'bg-red-500' : 'bg-orange-500'}`} /> {ing.status}
-                        </span>
+                      <div className="w-28 flex flex-col items-end gap-1">
+                        <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
+                        {user && (
+                          <div 
+                            className={`w-full px-2 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all ${ing.status === 'available' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border-emerald-200 dark:border-emerald-800' : ing.status === 'missing' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 border-red-200 dark:border-red-800' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 border-orange-200 dark:border-orange-800'}`}
+                          >
+                            <div className={`w-1.5 h-1.5 rounded-full ${ing.status === 'available' ? 'bg-emerald-500' : ing.status === 'missing' ? 'bg-red-500' : 'bg-orange-500'}`} /> {ing.status}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
