@@ -40,7 +40,7 @@ export const ExploreView = ({ onSelectRecipe }) => {
       const matchesRating = recipe.rating >= minRating;
       return matchesSearch && matchesDiet && matchesTime && matchesRating;
     });
-  }, [searchQuery, dietFilter, maxTime, minRating]);
+  }, [recipes, searchQuery, dietFilter, maxTime, minRating]);
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8">

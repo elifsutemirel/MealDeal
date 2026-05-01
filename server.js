@@ -147,7 +147,7 @@ app.put('/api/auth/profile', async (req, res) => {
             'SELECT user_id, username, email FROM "User" WHERE (email = $1 OR username = $2) AND user_id != $3',
             [email, username, user_id]
         );
-        
+
         if (existing.rows.length > 0) {
             const isEmailDup = existing.rows.some(r => r.email === email);
             return res.status(400).json({
@@ -234,6 +234,132 @@ app.get('/api/chef/royalties', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Error fetching royalty data.' });
+    }
+});
+
+// GET Creator Royalty Dashboard
+// Available to any authenticated user that is a RecipeCreator (Home Cook or Verified Chef).
+app.get('/api/creator/royalty-dashboard', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(401).json({ message: 'Authentication required.' });
+
+    try {
+        const creatorCheck = await pool.query(
+            'SELECT user_id FROM "RecipeCreator" WHERE user_id = $1',
+            [userId]
+        );
+
+        if (creatorCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Creator royalty dashboard is only available to recipe creators.' });
+        }
+
+        const perRecipeQuery = `
+            WITH review_stats AS (
+                SELECT
+                    recipe_id,
+                    ROUND(AVG(rating)::numeric, 1) AS avg_rating,
+                    COUNT(*) AS review_count
+                FROM "Comment"
+                WHERE rating IS NOT NULL
+                GROUP BY recipe_id
+            ),
+            cook_stats AS (
+                SELECT
+                    recipe_id,
+                    COUNT(*) AS cooked_count
+                FROM "Comment"
+                WHERE cooked_at IS NOT NULL
+                GROUP BY recipe_id
+            ),
+            purchase_stats AS (
+                SELECT
+                    c.recipe_id,
+                    COUNT(DISTINCT o.order_id) AS meal_kit_order_count
+                FROM "Cart" c
+                JOIN "Order" o ON o.cart_id = c.cart_id
+                WHERE o.status = 'confirmed'
+                GROUP BY c.recipe_id
+            )
+            SELECT
+                r.recipe_id,
+                r.title,
+                r.visibility,
+                COALESCE(rs.avg_rating, 0::numeric)::text AS avg_rating,
+                COALESCE(rs.review_count, 0)::int AS review_count,
+                COALESCE(cs.cooked_count, 0)::int AS cooked_count,
+                COALESCE(ps.meal_kit_order_count, 0)::int AS meal_kit_order_count,
+                (
+                    COALESCE(ps.meal_kit_order_count, 0) * 10
+                    + COALESCE(cs.cooked_count, 0) * 2
+                    + COALESCE(rs.review_count, 0)
+                )::int AS creator_reward_points
+            FROM "Recipe" r
+            LEFT JOIN review_stats rs ON rs.recipe_id = r.recipe_id
+            LEFT JOIN cook_stats cs ON cs.recipe_id = r.recipe_id
+            LEFT JOIN purchase_stats ps ON ps.recipe_id = r.recipe_id
+            WHERE r.creator_id = $1
+            ORDER BY creator_reward_points DESC, meal_kit_order_count DESC, cooked_count DESC, review_count DESC, r.title ASC;
+        `;
+
+        const summaryQuery = `
+            WITH per_recipe AS (
+                WITH review_stats AS (
+                    SELECT recipe_id, COUNT(*) AS review_count
+                    FROM "Comment"
+                    WHERE rating IS NOT NULL
+                    GROUP BY recipe_id
+                ),
+                cook_stats AS (
+                    SELECT recipe_id, COUNT(*) AS cooked_count
+                    FROM "Comment"
+                    WHERE cooked_at IS NOT NULL
+                    GROUP BY recipe_id
+                ),
+                purchase_stats AS (
+                    SELECT
+                        c.recipe_id,
+                        COUNT(DISTINCT o.order_id) AS meal_kit_order_count
+                    FROM "Cart" c
+                    JOIN "Order" o ON o.cart_id = c.cart_id
+                    WHERE o.status = 'confirmed'
+                    GROUP BY c.recipe_id
+                )
+                SELECT
+                    r.recipe_id,
+                    COALESCE(rs.review_count, 0) AS review_count,
+                    COALESCE(cs.cooked_count, 0) AS cooked_count,
+                    COALESCE(ps.meal_kit_order_count, 0) AS meal_kit_order_count
+                FROM "Recipe" r
+                LEFT JOIN review_stats rs ON rs.recipe_id = r.recipe_id
+                LEFT JOIN cook_stats cs ON cs.recipe_id = r.recipe_id
+                LEFT JOIN purchase_stats ps ON ps.recipe_id = r.recipe_id
+                WHERE r.creator_id = $1
+            )
+            SELECT
+                COUNT(*)::int AS total_recipes,
+                COALESCE(SUM(cooked_count), 0)::int AS total_cooked_count,
+                COALESCE(SUM(review_count), 0)::int AS total_review_count,
+                COALESCE(SUM(meal_kit_order_count), 0)::int AS total_meal_kit_order_count,
+                (
+                    COALESCE(SUM(meal_kit_order_count), 0) * 10
+                    + COALESCE(SUM(cooked_count), 0) * 2
+                    + COALESCE(SUM(review_count), 0)
+                )::int AS total_creator_reward_points
+            FROM per_recipe;
+        `;
+
+        const [recipesResult, summaryResult] = await Promise.all([
+            pool.query(perRecipeQuery, [userId]),
+            pool.query(summaryQuery, [userId])
+        ]);
+
+        res.json({
+            summary: summaryResult.rows[0],
+            recipes: recipesResult.rows
+        });
+    } catch (error) {
+        console.error('CREATOR ROYALTY DASHBOARD ERROR:', error);
+        res.status(500).json({ message: 'Error fetching creator royalty dashboard.', detail: error.message });
     }
 });
 
@@ -324,7 +450,7 @@ app.get('/api/supplier/inventory', async (req, res) => {
 // ADD to Inventory
 app.post('/api/supplier/inventory', async (req, res) => {
     const { supplier_id, ingredient_name, unit, price, package_size, available_qty } = req.body;
-    
+
     if (!ingredient_name || !ingredient_name.trim()) {
         return res.status(400).json({ message: 'Ingredient name is required.' });
     }
@@ -353,7 +479,7 @@ app.post('/api/supplier/inventory', async (req, res) => {
             RETURNING *;
         `;
         const result = await client.query(query, [supplier_id, ingredientId, unit, price, package_size, available_qty]);
-        
+
         await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -462,6 +588,11 @@ app.get('/api/recipes', async (req, res) => {
                         'baseQty', ri.qty,
                         'unit', ri.unit,
                         'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                        'status', CASE 
+                                    WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
+                                    ELSE 'missing' 
+                                  END
+                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
                         'suppliers', (
                             SELECT COALESCE(json_agg(json_build_object(
                                 'inventory_id', si.inventory_id,
@@ -490,7 +621,7 @@ app.get('/api/recipes', async (req, res) => {
             ORDER BY rating DESC;
         `;
         const result = await pool.query(query);
-        
+
         // Use default images from the mock data based on index
         const MOCK_IMAGES = [
             "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
@@ -511,13 +642,120 @@ app.get('/api/recipes', async (req, res) => {
             image: MOCK_IMAGES[index % MOCK_IMAGES.length],
             ingredients: row.ingredients,
             steps: ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
-            substitutions: []
+            substitutions: [],
+            reviews: []
         }));
+
+        // Fetch reviews for all recipes
+        const recipeIds = recipes.map(r => r.id);
+        if (recipeIds.length > 0) {
+            const reviewsResult = await pool.query(
+                `SELECT c.comment_id, c.recipe_id, c.comment_text, c.rating, c.creation_time, u.username
+                 FROM "Comment" c
+                 JOIN "User" u ON u.user_id = c.user_id
+                 WHERE c.recipe_id = ANY($1) AND c.comment_text IS NOT NULL
+                 ORDER BY c.creation_time DESC`,
+                [recipeIds]
+            );
+            // Attach reviews to their recipes
+            for (const review of reviewsResult.rows) {
+                const recipe = recipes.find(r => r.id === review.recipe_id);
+                if (recipe) {
+                    recipe.reviews.push({
+                        id: review.comment_id,
+                        user: review.username,
+                        comment: review.comment_text,
+                        rating: review.rating,
+                        date: review.creation_time
+                    });
+                }
+            }
+        }
 
         res.json(recipes);
     } catch (error) {
         console.error('RECIPES API ERROR:', error);
         res.status(500).json({ message: 'Error fetching recipes.', detail: error.message });
+    }
+});
+
+// =============================================================
+// REVIEW ENDPOINTS
+// =============================================================
+
+// GET reviews for a recipe
+app.get('/api/recipe/:id/reviews', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT c.comment_id, c.comment_text, c.rating, c.creation_time, u.username
+             FROM "Comment" c
+             JOIN "User" u ON u.user_id = c.user_id
+             WHERE c.recipe_id = $1 AND c.comment_text IS NOT NULL
+             ORDER BY c.creation_time DESC`,
+            [req.params.id]
+        );
+        res.json(result.rows.map(r => ({
+            id: r.comment_id,
+            user: r.username,
+            comment: r.comment_text,
+            rating: r.rating,
+            date: r.creation_time
+        })));
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching reviews.' });
+    }
+});
+
+// POST a new review (only Home Cooks and Verified Chefs)
+app.post('/api/recipe/:id/review', async (req, res) => {
+    const { userId, rating, comment } = req.body;
+    const recipeId = req.params.id;
+
+    if (!userId || !comment || !rating) {
+        return res.status(400).json({ message: 'userId, rating, and comment are required.' });
+    }
+    if (rating < 1 || rating > 5) {
+        return res.status(400).json({ message: 'Rating must be between 1 and 5.' });
+    }
+
+    try {
+        // Verify user exists
+        const userCheck = await pool.query('SELECT user_id, username FROM "User" WHERE user_id = $1', [userId]);
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        // Check if recipe exists in the DB
+        const recipeCheck = await pool.query('SELECT recipe_id FROM "Recipe" WHERE recipe_id = $1', [recipeId]);
+        if (recipeCheck.rows.length === 0) {
+            // Recipe is from mock/static data, not in DB — return a simulated success
+            return res.status(201).json({
+                id: Date.now(),
+                user: userCheck.rows[0].username,
+                comment,
+                rating,
+                date: new Date().toISOString()
+            });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO "Comment" (user_id, recipe_id, comment_text, rating, creation_time, rated_at)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             RETURNING comment_id, creation_time`,
+            [userId, recipeId, comment, rating]
+        );
+
+        res.status(201).json({
+            id: result.rows[0].comment_id,
+            user: userCheck.rows[0].username,
+            comment,
+            rating,
+            date: result.rows[0].creation_time
+        });
+    } catch (error) {
+        console.error('REVIEW POST ERROR:', error);
+        res.status(500).json({ message: 'Error posting review.', detail: error.message });
     }
 });
 
@@ -599,7 +837,7 @@ app.delete('/api/meallist/:id', async (req, res) => {
 // POST /api/checkout
 app.post('/api/checkout', async (req, res) => {
     const { userId, totalAmount, items } = req.body;
-    
+
     // In a real scenario, we would use the session userId. Here we default to 1 for dummy testing.
     const effectiveUserId = userId || 1;
 

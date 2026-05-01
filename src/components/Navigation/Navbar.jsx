@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ShoppingBasket, Users, Moon, Sun } from 'lucide-react';
+import { ShoppingBasket, Users, Moon, Sun } from 'lucide-react';
 import { LogOut } from '../Common/LogOut';
 
 export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode, setDarkMode }) => (
@@ -15,9 +15,9 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
             {tab.replace('-', ' ')}
           </button>
         ))}
-        {user && user.role === 'Verified Chef' && (
+        {user && ['Home Cook', 'Verified Chef'].includes(user.role) && (
           <button onClick={() => setTab('dashboard')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'dashboard' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
-            Dashboard
+            Royalties
           </button>
         )}
         {user && user.role === 'Local Supplier' && (

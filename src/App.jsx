@@ -7,7 +7,7 @@ import { RecipeDetailView } from './components/Recipes/RecipeDetailView';
 import { CartView } from './components/Cart/CartView';
 import { ChallengesView } from './components/Challenges/ChallengesView';
 import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
-import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
+import { CreatorRoyaltyDashboardView } from './components/Dashboard/CreatorRoyaltyDashboardView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
 import { ProfileView } from './components/Profile/ProfileView';
@@ -101,7 +101,7 @@ export default function App() {
             {currentTab === 'challenges' && <ChallengesView user={user} />}
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
-            {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
+            {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
             {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
           </>
         )}

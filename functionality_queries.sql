@@ -41,6 +41,60 @@ HAVING ($3 IS NULL OR AVG(c.rating) >= $3)
 ORDER BY avg_rating DESC;
 
 -- -------------------------------------------------------------
+-- (advanced) CREATOR ROYALTY DASHBOARD
+-- Parameters: $1:creator_user_id
+-- Available to users that exist in RecipeCreator (HomeCook or VerifiedChef).
+-- "Comment" stores both ratings/reviews and cooking logs in this schema.
+-- Royalty points are engagement analytics, not supplier revenue or actual creator payouts.
+-- -------------------------------------------------------------
+
+WITH review_stats AS (
+    SELECT
+        recipe_id,
+        ROUND(AVG(rating)::numeric, 1) AS avg_rating,
+        COUNT(*) AS review_count
+    FROM "Comment"
+    WHERE rating IS NOT NULL
+    GROUP BY recipe_id
+),
+cook_stats AS (
+    SELECT
+        recipe_id,
+        COUNT(*) AS cooked_count
+    FROM "Comment"
+    WHERE cooked_at IS NOT NULL
+    GROUP BY recipe_id
+),
+purchase_stats AS (
+    SELECT
+        c.recipe_id,
+        COUNT(DISTINCT o.order_id) AS meal_kit_order_count
+    FROM "Cart" c
+    JOIN "Order" o ON o.cart_id = c.cart_id
+    WHERE o.status = 'confirmed'
+    GROUP BY c.recipe_id
+)
+SELECT
+    r.recipe_id,
+    r.title,
+    r.visibility,
+    COALESCE(rs.avg_rating, 0::numeric) AS avg_rating,
+    COALESCE(rs.review_count, 0) AS review_count,
+    COALESCE(cs.cooked_count, 0) AS cooked_count,
+    COALESCE(ps.meal_kit_order_count, 0) AS meal_kit_order_count,
+    (
+        COALESCE(ps.meal_kit_order_count, 0) * 10
+        + COALESCE(cs.cooked_count, 0) * 2
+        + COALESCE(rs.review_count, 0)
+    ) AS creator_reward_points
+FROM "Recipe" r
+LEFT JOIN review_stats rs ON rs.recipe_id = r.recipe_id
+LEFT JOIN cook_stats cs ON cs.recipe_id = r.recipe_id
+LEFT JOIN purchase_stats ps ON ps.recipe_id = r.recipe_id
+WHERE r.creator_id = $1
+ORDER BY creator_reward_points DESC, meal_kit_order_count DESC, cooked_count DESC, review_count DESC, r.title ASC;
+
+-- -------------------------------------------------------------
 -- (c-iii)  SCALING
 -- Parameters: $1:recipe_id, $2:target_servings
 -- -------------------------------------------------------------
