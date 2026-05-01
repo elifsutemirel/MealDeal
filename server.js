@@ -326,6 +326,57 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+app.delete('/api/supplier/inventory/:id', async (req, res) => {
+    const inventoryId = req.params.id;
+    try {
+        await pool.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inventoryId]);
+        res.json({ message: 'Item removed from inventory.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error removing item from inventory.' });
+    }
+});
+
+app.get('/api/supplier/orders', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ message: 'userId is required' });
+    try {
+        const query = `
+            SELECT o.order_id, o.order_date, o.total_amount, o.status, u.username as buyer_name,
+                   json_agg(json_build_object(
+                       'item_name', i.name,
+                       'qty', ci.qty,
+                       'unit', si.unit,
+                       'price', ci.unit_price
+                   )) as items
+            FROM "Order" o
+            JOIN "Cart" c ON c.cart_id = o.cart_id
+            JOIN "User" u ON u.user_id = c.user_id
+            JOIN "CartItem" ci ON ci.cart_id = c.cart_id
+            JOIN "SupplierInventory" si ON si.inventory_id = ci.inventory_id
+            JOIN "Ingredient" i ON i.ingredient_id = si.ingredient_id
+            WHERE si.supplier_id = $1
+            GROUP BY o.order_id, o.order_date, o.total_amount, o.status, u.username
+            ORDER BY o.order_date DESC;
+        `;
+        const result = await pool.query(query, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error("GET /api/supplier/orders ERROR:", error);
+        res.status(500).json({ message: 'Failed to fetch orders' });
+    }
+});
+
+app.put('/api/supplier/orders/:id/fulfill', async (req, res) => {
+    try {
+        await pool.query('UPDATE "Order" SET status = $1 WHERE order_id = $2', ['fulfilled', req.params.id]);
+        res.json({ message: 'Order fulfilled' });
+    } catch (error) {
+        console.error("PUT /api/supplier/orders/fulfill ERROR:", error);
+        res.status(500).json({ message: 'Failed to fulfill order' });
+    }
+});
+
 // --- MEAL LIST ENDPOINTS ---
 
 // GET All Meal Lists for a User
@@ -392,10 +443,16 @@ app.get('/api/recipes', async (req, res) => {
                         'baseQty', ri.qty,
                         'unit', ri.unit,
                         'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
-                        'status', CASE 
-                                    WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
-                                    ELSE 'missing' 
-                                  END
+                        'suppliers', COALESCE((
+                            SELECT json_agg(json_build_object(
+                                'id', si.inventory_id,
+                                'name', ls.location_name,
+                                'price', si.price
+                            ))
+                            FROM "SupplierInventory" si
+                            JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                            WHERE si.ingredient_id = i.ingredient_id AND si.available_qty > 0
+                        ), '[]'::json)
                     )), '[]'::json)
                     FROM "Recipe_Ingredient" ri
                     JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
@@ -641,11 +698,76 @@ app.post('/api/checkout', async (req, res) => {
             [totalAmount || 0, effectiveUserId]
         );
 
-        // 2. Soft Integration: Log the actions instead of strict inserts to avoid foreign key failures
-        // with the static dummy recipes/ingredients which might not be in the database yet.
-        console.log(`[Checkout] User ${effectiveUserId} checked out ${items?.length || 0} items for $${totalAmount}.`);
-        console.log(`[Checkout] - Local Supplier inventory hypothetically deducted.`);
-        console.log(`[Checkout] - 'Cook Action' hypothetically logged for Chef Royalty metric update.`);
+        // 2. Create Cart
+        const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
+        const cartId = cartRes.rows[0].cart_id;
+
+        // 3. Process each recipe in the cart and its selected ingredients
+        if (items && items.length > 0) {
+            console.log(`\x1b[32m[CHECKOUT START]\x1b[0m User: ${effectiveUserId}`);
+            
+            for (const cartEntry of items) {
+                const ingredients = cartEntry.recipe.cartIngredients || [];
+                const servingsFactor = Number(cartEntry.servings || 2) / 2;
+
+                for (const ing of ingredients) {
+                    const rawId = ing.id;
+                    const ingId = typeof rawId === 'string' && rawId.startsWith('i') 
+                        ? parseInt(rawId.replace('i','')) 
+                        : parseInt(rawId);
+                    
+                    if (isNaN(ingId)) continue;
+
+                    let invRes;
+                    // Eğer kullanıcı spesifik bir envanter (tedarikçi) seçmişse onu kullan
+                    if (ing.selectedInventoryId) {
+                        invRes = await client.query(
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                             FROM "SupplierInventory" si
+                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                             WHERE si.inventory_id = $1 AND si.available_qty > 0`, 
+                            [ing.selectedInventoryId]
+                        );
+                    } else {
+                        // Seçmemişse en ucuzunu bul
+                        invRes = await client.query(
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                             FROM "SupplierInventory" si
+                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                             WHERE si.ingredient_id = $1 AND si.available_qty > 0 
+                             ORDER BY si.price ASC LIMIT 1`, 
+                            [ingId]
+                        );
+                    }
+                    
+                    if (invRes.rows.length > 0) {
+                        const inv = invRes.rows[0];
+                        const qtyToDeduct = Number(ing.baseQty || 1) * servingsFactor;
+                        const newQty = Math.max(0, Number(inv.available_qty) - qtyToDeduct);
+                        
+                        console.log(`    - Processing: ${ing.name} | Deducting ${qtyToDeduct} from "${inv.location_name}"`);
+
+                        if (newQty <= 0) {
+                            // STOK BİTTİ -> SİL
+                            await client.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inv.inventory_id]);
+                            console.log(`      ✓ Stock reached 0. Item REMOVED from inventory.`);
+                        } else {
+                            // STOK VAR -> GÜNCELLE
+                            await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
+                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
+                        }
+
+                        await client.query(
+                            'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
+                            [cartId, inv.inventory_id, qtyToDeduct, inv.price]
+                        );
+                    }
+                }
+            }
+        }
+
+        // 4. Create Order
+        await client.query('INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)', [cartId, totalAmount || 0, 'pending']);
 
         await client.query('COMMIT');
         res.json({ message: 'Checkout successful! Order confirmed and inventory deducted.' });

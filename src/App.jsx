@@ -9,6 +9,7 @@ import { ChallengesView } from './components/Challenges/ChallengesView';
 import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
 import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
+import { SupplierOrdersView } from './components/Dashboard/SupplierOrdersView';
 import { MealListView } from './components/MealLists/MealListView';
 import { ProfileView } from './components/Profile/ProfileView';
 
@@ -91,10 +92,11 @@ export default function App() {
           <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
         ) : (
           <>
-            {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
+            {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
+            {currentTab === 'orders' && user?.role === 'Local Supplier' && <SupplierOrdersView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}

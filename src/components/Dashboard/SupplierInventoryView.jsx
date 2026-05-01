@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
-const InventoryRow = ({ item, onUpdate }) => {
+const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
   const [qty, setQty] = useState(item.available_qty);
   const hasChanged = price !== item.price || qty !== item.available_qty;
@@ -30,6 +30,13 @@ const InventoryRow = ({ item, onUpdate }) => {
         ) : (
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-700">Sync'd</span>
         )}
+        <button 
+          onClick={() => onDelete(item.inventory_id)} 
+          className="ml-4 text-slate-300 hover:text-red-500 transition-colors"
+          title="Remove from inventory"
+        >
+          <Trash2 size={16} />
+        </button>
       </td>
     </tr>
   );
@@ -83,6 +90,20 @@ export const SupplierInventoryView = ({ user }) => {
         body: JSON.stringify({ price: parseFloat(price), available_qty: parseFloat(qty) })
       });
       fetchInventory();
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to remove this item from your inventory?')) return;
+    try {
+      const res = await fetch(`/api/supplier/inventory/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        fetchInventory();
+      } else {
+        alert('Failed to remove item');
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -183,7 +204,7 @@ export const SupplierInventoryView = ({ user }) => {
               </tr>
             ) : (
               inventory.map((item) => (
-                <InventoryRow key={item.inventory_id} item={item} onUpdate={handleUpdate} />
+                <InventoryRow key={item.inventory_id} item={item} onUpdate={handleUpdate} onDelete={handleDelete} />
               ))
             )}
           </tbody>

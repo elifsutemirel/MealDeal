@@ -5,7 +5,18 @@ import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
-  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ ...i, selected: true })));
+  const [ingredientsState, setIngredientsState] = useState(
+    recipe.ingredients.map(i => {
+      // Find cheapest supplier as default
+      const sortedSuppliers = [...(i.suppliers || [])].sort((a, b) => a.price - b.price);
+      return { 
+        ...i, 
+        selected: true, 
+        selectedInventoryId: sortedSuppliers[0]?.id || null,
+        currentPrice: sortedSuppliers[0]?.price || i.pricePerUnit // Use db price if available
+      };
+    })
+  );
 
   // AI substitution state
   const [aiTargetIngredient, setAiTargetIngredient] = useState(null);
@@ -66,7 +77,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const selectedTotal = useMemo(() => {
     return ingredientsState
       .filter(i => i.selected)
-      .reduce((total, i) => total + (i.pricePerUnit * (i.baseQty * scaleFactor)), 0);
+      .reduce((total, i) => total + (i.currentPrice * (i.baseQty * scaleFactor)), 0);
   }, [ingredientsState, scaleFactor]);
 
   const handleToggleIngredient = (id) => {
@@ -116,7 +127,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         return {
           ...i,
           name: aiResult.suggestion,
-          status: 'available',
+          suppliers: ['AI Standard Pantry'],
           pricePerUnit: aiResult.suggestedPrice / i.baseQty // Estimate new unit price
         };
       }
@@ -126,7 +137,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     setAiResult(null);
   };
 
-  const missingIngredientsCount = ingredientsState.filter(i => i.status === 'missing').length;
+  const missingIngredientsCount = ingredientsState.filter(i => !i.suppliers || i.suppliers.length === 0).length;
 
   const handleOpenMealListModal = async () => {
     if (!user) {
@@ -223,7 +234,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                     </div>
                     <div className="flex items-center gap-4 text-right">
                       {/* Interactive AI Suggestion Button per Ingredient (only if missing and logged in) */}
-                      {user && ing.status === 'missing' && (
+                      {user && (!ing.suppliers || ing.suppliers.length === 0) && (
                         <button
                           onClick={() => handleRequestAI(ing)}
                           className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
@@ -233,14 +244,32 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                         </button>
                       )}
 
-                      <div className="w-28 flex flex-col items-end gap-1">
+                      <div className="w-32 flex flex-col items-end gap-1">
                         <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
                         {user && (
-                          <div 
-                            className={`w-full px-2 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all ${ing.status === 'available' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border-emerald-200 dark:border-emerald-800' : ing.status === 'missing' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 border-red-200 dark:border-red-800' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 border-orange-200 dark:border-orange-800'}`}
-                          >
-                            <div className={`w-1.5 h-1.5 rounded-full ${ing.status === 'available' ? 'bg-emerald-500' : ing.status === 'missing' ? 'bg-red-500' : 'bg-orange-500'}`} /> {ing.status}
-                          </div>
+                          ing.suppliers && ing.suppliers.length > 0 ? (
+                            <div className="mt-2 w-full">
+                              <select 
+                                value={ing.selectedInventoryId || ''} 
+                                onChange={(e) => {
+                                  const invId = parseInt(e.target.value);
+                                  const selectedSup = ing.suppliers.find(s => s.id === invId);
+                                  setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: invId, currentPrice: selectedSup?.price || p.currentPrice } : p));
+                                }}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-lg p-1.5 text-[9px] font-bold text-slate-600 dark:text-slate-300 outline-none focus:ring-1 ring-emerald-500/20"
+                              >
+                                {ing.suppliers.map((sup) => (
+                                  <option key={sup.id} value={sup.id}>
+                                    {sup.name} (${Number(sup.price).toFixed(2)})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
+                              Missing
+                            </div>
+                          )
                         )}
                       </div>
                     </div>
