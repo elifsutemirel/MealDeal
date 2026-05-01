@@ -302,6 +302,75 @@ app.get('/api/meallist/:id/recipes', async (req, res) => {
     }
 });
 
+// =============================================================
+// RECIPE DISCOVERY ENDPOINT
+// =============================================================
+
+// GET /api/recipes — Fetch all public recipes with their ingredients
+app.get('/api/recipes', async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                r.recipe_id AS id,
+                r.title,
+                u.username AS chef,
+                r.dietary_tag AS category,
+                r.cook_time_min AS time,
+                r.difficulty_level AS difficulty,
+                r.base_servings,
+                COALESCE(ROUND(AVG(c.rating), 1), 0) AS rating,
+                (
+                    SELECT COALESCE(json_agg(json_build_object(
+                        'id', i.ingredient_id,
+                        'name', i.name,
+                        'baseQty', ri.qty,
+                        'unit', ri.unit,
+                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10)
+                    )), '[]'::json)
+                    FROM "Recipe_Ingredient" ri
+                    JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
+                    WHERE ri.recipe_id = r.recipe_id
+                ) AS ingredients
+            FROM "Recipe" r
+            JOIN "RecipeCreator" rc ON rc.user_id = r.creator_id
+            JOIN "User" u ON u.user_id = rc.user_id
+            LEFT JOIN "Comment" c ON c.recipe_id = r.recipe_id AND c.rating IS NOT NULL
+            WHERE r.visibility = 'public'
+            GROUP BY r.recipe_id, u.username
+            ORDER BY rating DESC;
+        `;
+        const result = await pool.query(query);
+        
+        // Use default images from the mock data based on index
+        const MOCK_IMAGES = [
+            "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1608756687911-aa1599ab3bd9?auto=format&fit=crop&q=80&w=600"
+        ];
+
+        const recipes = result.rows.map((row, index) => ({
+            id: row.id,
+            title: row.title,
+            chef: row.chef,
+            rating: parseFloat(row.rating),
+            time: row.time,
+            difficulty: row.difficulty,
+            category: row.category,
+            image: MOCK_IMAGES[index % MOCK_IMAGES.length],
+            ingredients: row.ingredients,
+            steps: ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
+            substitutions: []
+        }));
+
+        res.json(recipes);
+    } catch (error) {
+        console.error('RECIPES API ERROR:', error);
+        res.status(500).json({ message: 'Error fetching recipes.', detail: error.message });
+    }
+});
+
 // CREATE a new Meal List
 app.post('/api/meallist', async (req, res) => {
     const { user_id, name, description } = req.body;
@@ -610,6 +679,87 @@ app.post('/api/client-error', (req, res) => {
         console.error('Failed to log client error', e);
     }
     res.status(204).end();
+});
+
+// =============================================================
+// LEADERBOARDS & ACHIEVEMENTS ENDPOINTS
+// =============================================================
+
+// GET /api/leaderboard/global — Top Home Cooks by recipes cooked
+app.get('/api/leaderboard/global', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                u.user_id, 
+                u.username, 
+                u.total AS meal_coins,
+                COUNT(c.comment_id) AS cooked_count
+            FROM "User" u
+            JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
+            GROUP BY u.user_id, u.username, u.total
+            ORDER BY cooked_count DESC, meal_coins DESC
+            LIMIT 50;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GLOBAL LEADERBOARD ERROR:', error);
+        res.status(500).json({ message: 'Error fetching global leaderboard.', detail: error.message });
+    }
+});
+
+// GET /api/users/:id/achievements — Get dynamic badges and stats for a user
+app.get('/api/users/:id/achievements', async (req, res) => {
+    const userId = req.params.id;
+    try {
+        // 1. Get total cooked recipes
+        const cookedResult = await pool.query(
+            `SELECT COUNT(*) as cooked_count FROM "Comment" WHERE user_id = $1 AND cooked_at IS NOT NULL`,
+            [userId]
+        );
+        const cookedCount = parseInt(cookedResult.rows[0].cooked_count) || 0;
+
+        // 2. Get joined challenges
+        const joinedResult = await pool.query(
+            `SELECT COUNT(*) as joined_count FROM "HomeCook_Challenge" WHERE user_id = $1`,
+            [userId]
+        );
+        const joinedCount = parseInt(joinedResult.rows[0].joined_count) || 0;
+
+        // 3. Get user details (MealCoins)
+        const userResult = await pool.query(`SELECT total FROM "User" WHERE user_id = $1`, [userId]);
+        const mealCoins = userResult.rows.length > 0 ? parseFloat(userResult.rows[0].total) : 0;
+
+        // 4. Calculate Badges dynamically
+        const badges = [];
+
+        // Cooking Badges
+        if (cookedCount >= 1) badges.push({ id: 'first_cook', name: 'First Cook', icon: '🍳', description: 'Cooked your first recipe on MealDeal!', color: 'emerald' });
+        if (cookedCount >= 5) badges.push({ id: 'chef_training', name: 'Chef in Training', icon: '👨‍🍳', description: 'Cooked 5 recipes.', color: 'amber' });
+        if (cookedCount >= 10) badges.push({ id: 'master_cook', name: 'Master Cook', icon: '👑', description: 'Cooked 10 recipes.', color: 'purple' });
+        if (cookedCount >= 50) badges.push({ id: 'legendary_cook', name: 'Legendary Cook', icon: '🌟', description: 'Cooked 50 recipes.', color: 'orange' });
+
+        // Challenge Badges
+        if (joinedCount >= 1) badges.push({ id: 'challenger', name: 'Challenger', icon: '⚔️', description: 'Joined your first kitchen challenge.', color: 'blue' });
+        if (joinedCount >= 5) badges.push({ id: 'challenge_veteran', name: 'Challenge Veteran', icon: '🛡️', description: 'Joined 5 kitchen challenges.', color: 'indigo' });
+
+        // MealCoin Badges
+        if (mealCoins >= 50) badges.push({ id: 'deal_hunter', name: 'Deal Hunter', icon: '💎', description: 'Earned 50 MealCoins.', color: 'teal' });
+        if (mealCoins >= 200) badges.push({ id: 'meal_mogul', name: 'Meal Mogul', icon: '🏦', description: 'Accumulated 200 MealCoins.', color: 'yellow' });
+
+        res.json({
+            stats: {
+                cookedCount,
+                joinedCount,
+                mealCoins
+            },
+            badges
+        });
+    } catch (error) {
+        console.error('ACHIEVEMENTS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching achievements.', detail: error.message });
+    }
 });
 
 // Fallback to index.html for client-side routing (must be after all /api routes)

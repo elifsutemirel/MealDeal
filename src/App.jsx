@@ -6,6 +6,7 @@ import { ExploreView } from './components/Recipes/ExploreView';
 import { RecipeDetailView } from './components/Recipes/RecipeDetailView';
 import { CartView } from './components/Cart/CartView';
 import { ChallengesView } from './components/Challenges/ChallengesView';
+import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
 import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
@@ -95,6 +96,7 @@ export default function App() {
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
+            {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
           </>
