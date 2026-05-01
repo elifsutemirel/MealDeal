@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Trophy } from 'lucide-react';
+import { Loader2, Trophy, Search, X } from 'lucide-react';
 import { ChallengeDetailModal } from './ChallengeDetailModal';
 
 export const ChallengesView = ({ user }) => {
@@ -189,139 +189,129 @@ export const ChallengesView = ({ user }) => {
             No challenges found matching your search.
           </div>
         ) : (
-          {
-            filteredChallenges.length === 0 ? (
-              <div className="py-24 text-center">
-                <Trophy size={40} className="mx-auto text-slate-200 dark:text-slate-700 mb-4" />
-                <p className="text-slate-300 dark:text-slate-600 font-black uppercase tracking-widest text-xs">
-                  No {filter === 'all' ? '' : filter} challenges found.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
-                {filteredChallenges.map(challenge => {
-                  const prog = progressMap[challenge.challenge_id];
-                  const progressPercent = prog && prog.total > 0
-                    ? Math.round((parseInt(prog.cooked_count) / parseInt(prog.total)) * 100)
-                    : 0;
-                  const isJoined = joinedIds.has(challenge.challenge_id);
-                  const isJoining = joiningId === challenge.challenge_id;
-                  const isHomeCook = user?.role === 'Home Cook';
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+            {filteredChallenges.map(challenge => {
+              const prog = progressMap[challenge.challenge_id];
+              const progressPercent = prog && prog.total > 0
+                ? Math.round((parseInt(prog.cooked_count) / parseInt(prog.total)) * 100)
+                : 0;
+              const isJoined = joinedIds.has(challenge.challenge_id);
+              const isJoining = joiningId === challenge.challenge_id;
+              const isHomeCook = user?.role === 'Home Cook';
 
-                  return (
-                    <div
-                      key={challenge.challenge_id}
-                      onClick={() => setSelectedChallenge(challenge)}
-                      className="bg-secondary rounded-[2rem] overflow-hidden border border-primary shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
-                    >
-                      {/* Image */}
-                      <div className="relative h-44 overflow-hidden">
-                        <img
-                          src={challenge.image}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          alt={challenge.title}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                        <div className="absolute top-4 right-4 bg-white dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center text-2xl shadow-lg">
-                          {challenge.icon}
-                        </div>
-                        <div className="absolute top-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
-                          {challenge.status === 'active' ? '🔥 Active' : '🔜 Upcoming'}
-                        </div>
-                        {isJoined && (
-                          <div className="absolute bottom-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
-                            ✅ Joined
-                          </div>
-                        )}
+              return (
+                <div
+                  key={challenge.challenge_id}
+                  onClick={() => setSelectedChallenge(challenge)}
+                  className="bg-secondary rounded-[2rem] overflow-hidden border border-primary shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
+                >
+                  {/* Image */}
+                  <div className="relative h-44 overflow-hidden">
+                    <img
+                      src={challenge.image}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      alt={challenge.title}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                    <div className="absolute top-4 right-4 bg-white dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center text-2xl shadow-lg">
+                      {challenge.icon}
+                    </div>
+                    <div className="absolute top-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                      {challenge.status === 'active' ? '🔥 Active' : '🔜 Upcoming'}
+                    </div>
+                    {isJoined && (
+                      <div className="absolute bottom-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                        ✅ Joined
                       </div>
+                    )}
+                  </div>
 
-                      <div className="p-6">
-                        <h3 className="text-xl font-black text-primary mb-1">{challenge.title}</h3>
-                        <p className="text-sm text-secondary mb-4 line-clamp-2">{challenge.description}</p>
+                  <div className="p-6">
+                    <h3 className="text-xl font-black text-primary mb-1">{challenge.title}</h3>
+                    <p className="text-sm text-secondary mb-4 line-clamp-2">{challenge.description}</p>
 
-                        {/* Meta grid */}
-                        <div className="grid grid-cols-3 gap-2 mb-4 text-[10px] font-bold uppercase">
-                          <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
-                            <p className="text-tertiary">Duration</p>
-                            <p className="text-primary">{challenge.duration}</p>
-                          </div>
-                          <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
-                            <p className="text-tertiary">Difficulty</p>
-                            <p className={difficultyColor(challenge.difficulty)}>{challenge.difficulty}</p>
-                          </div>
-                          <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
-                            <p className="text-tertiary">Recipes</p>
-                            <p className="text-primary">{challenge.recipe_count ?? '—'}</p>
-                          </div>
-                        </div>
-
-                        {/* Progress bar — only if user is logged in */}
-                        {user && (
-                          <div className="mb-4">
-                            <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                              <span className="text-tertiary">Your Progress</span>
-                              <span className="text-primary">
-                                {prog ? `${prog.cooked_count}/${prog.total}` : '0/—'} recipes
-                              </span>
-                            </div>
-                            <div className="w-full bg-tertiary dark:bg-slate-800 rounded-full h-2">
-                              <div
-                                className="bg-gradient-to-r from-emerald-400 to-emerald-600 h-2 rounded-full transition-all duration-700"
-                                style={{ width: `${progressPercent}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Prize */}
-                        <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                          <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400">
-                            🏆 {challenge.prize}
-                          </p>
-                        </div>
-
-                        {/* Footer row */}
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-tertiary">👥 {(challenge.participants ?? 0).toLocaleString()} joined</span>
-                          <button
-                            onClick={(e) => {
-                              if (challenge.status !== 'active') {
-                                e.stopPropagation();
-                                return;
-                              }
-                              handleJoin(e, challenge.challenge_id);
-                            }}
-                            disabled={isJoining || isJoined || !isHomeCook}
-                            className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all flex items-center gap-1.5
-                          ${challenge.status !== 'active'
-                                ? 'bg-tertiary text-secondary dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
-                                : isJoined
-                                  ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-default border border-emerald-200 dark:border-emerald-800'
-                                  : isHomeCook
-                                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
-                                    : 'bg-tertiary text-secondary dark:bg-slate-800 cursor-not-allowed opacity-60'
-                              }`}
-                          >
-                            {isJoining && <Loader2 size={10} className="animate-spin" />}
-                            {challenge.status !== 'active'
-                              ? '🔜 Upcoming'
-                              : isJoined
-                                ? '✅ Joined'
-                                : !user
-                                  ? 'Sign In'
-                                  : !isHomeCook
-                                    ? 'Home Cook only'
-                                    : 'Join Challenge'
-                            }
-                          </button>
-                        </div>
+                    {/* Meta grid */}
+                    <div className="grid grid-cols-3 gap-2 mb-4 text-[10px] font-bold uppercase">
+                      <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
+                        <p className="text-tertiary">Duration</p>
+                        <p className="text-primary">{challenge.duration}</p>
+                      </div>
+                      <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
+                        <p className="text-tertiary">Difficulty</p>
+                        <p className={difficultyColor(challenge.difficulty)}>{challenge.difficulty}</p>
+                      </div>
+                      <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
+                        <p className="text-tertiary">Recipes</p>
+                        <p className="text-primary">{challenge.recipe_count ?? '—'}</p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )
-          }
+
+                    {/* Progress bar — only if user is logged in */}
+                    {user && (
+                      <div className="mb-4">
+                        <div className="flex justify-between text-[10px] font-bold mb-1.5">
+                          <span className="text-tertiary">Your Progress</span>
+                          <span className="text-primary">
+                            {prog ? `${prog.cooked_count}/${prog.total}` : '0/—'} recipes
+                          </span>
+                        </div>
+                        <div className="w-full bg-tertiary dark:bg-slate-800 rounded-full h-2">
+                          <div
+                            className="bg-gradient-to-r from-emerald-400 to-emerald-600 h-2 rounded-full transition-all duration-700"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Prize */}
+                    <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                      <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400">
+                        🏆 {challenge.prize}
+                      </p>
+                    </div>
+
+                    {/* Footer row */}
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-tertiary">👥 {(challenge.participants ?? 0).toLocaleString()} joined</span>
+                      <button
+                        onClick={(e) => {
+                          if (challenge.status !== 'active') {
+                            e.stopPropagation();
+                            return;
+                          }
+                          handleJoin(e, challenge.challenge_id);
+                        }}
+                        disabled={isJoining || isJoined || !isHomeCook}
+                        className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all flex items-center gap-1.5
+                          ${challenge.status !== 'active'
+                            ? 'bg-tertiary text-secondary dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
+                            : isJoined
+                              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-default border border-emerald-200 dark:border-emerald-800'
+                              : isHomeCook
+                                ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
+                                : 'bg-tertiary text-secondary dark:bg-slate-800 cursor-not-allowed opacity-60'
+                          }`}
+                      >
+                        {isJoining && <Loader2 size={10} className="animate-spin" />}
+                        {challenge.status !== 'active'
+                          ? '🔜 Upcoming'
+                          : isJoined
+                            ? '✅ Joined'
+                            : !user
+                              ? 'Sign In'
+                              : !isHomeCook
+                                ? 'Home Cook only'
+                                : 'Join Challenge'
+                        }
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Detail Modal */}
