@@ -10,13 +10,20 @@ import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
 import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
+import { RecipeCreateView } from './components/Recipes/RecipeCreateView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
 
 // --- Main App Setup ---
 export default function App() {
-  const [user, setUser] = useState(null); // Auth State
+  const [user, setUser] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const savedUser = localStorage.getItem('user');
+      if (savedUser) return JSON.parse(savedUser);
+    }
+    return null;
+  }); // Auth State
   const [currentTab, setCurrentTab] = useState('explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cart, setCart] = useState([]);
@@ -36,6 +43,15 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Persist User State
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+  }, [user]);
 
   // Fetch Meal Lists when user logs in
   useEffect(() => {
@@ -99,6 +115,7 @@ export default function App() {
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
+            {currentTab === 'create-recipe' && (user?.role === 'Verified Chef' || user?.role === 'Home Cook') && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
           </>
         )}
       </main>

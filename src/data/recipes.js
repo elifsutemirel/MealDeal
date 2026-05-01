@@ -2,7 +2,7 @@
 // Note: Prices are now per unit to allow users to deselect ingredients they already own.
 export const RECIPES = [
   {
-    id: 1,
+    id: 1001,
     title: "Organic Harvest Bowl",
     chef: "Chef Aybegüm",
     chefRating: 4.9,
@@ -38,7 +38,7 @@ export const RECIPES = [
     ]
   },
   {
-    id: 2,
+    id: 1002,
     title: "Seared Atlantic Salmon",
     chef: "Chef Burkay",
     chefRating: 4.7,
@@ -73,7 +73,7 @@ export const RECIPES = [
     ]
   },
   {
-    id: 3,
+    id: 1003,
     title: "Creamy Mushroom Risotto",
     chef: "Chef Deniz",
     chefRating: 4.8,
@@ -104,7 +104,7 @@ export const RECIPES = [
     substitutions: []
   },
   {
-    id: 4,
+    id: 1004,
     title: "Thai Green Curry with Chicken",
     chef: "Chef Niran",
     chefRating: 4.9,
@@ -135,7 +135,7 @@ export const RECIPES = [
     substitutions: []
   },
   {
-    id: 5,
+    id: 1005,
     title: "Truffle Pasta Carbonara",
     chef: "Chef Marco",
     chefRating: 5.0,
@@ -167,7 +167,7 @@ export const RECIPES = [
     substitutions: []
   },
   {
-    id: 6,
+    id: 1006,
     title: "Buddha Power Bowl",
     chef: "Chef Zeynep",
     chefRating: 4.8,
@@ -198,7 +198,7 @@ export const RECIPES = [
     substitutions: []
   },
   {
-    id: 7,
+    id: 1007,
     title: "Pan-Seared Sea Bass with Lemon Butter",
     chef: "Chef Onur",
     chefRating: 4.7,
@@ -230,7 +230,7 @@ export const RECIPES = [
     substitutions: []
   },
   {
-    id: 8,
+    id: 1008,
     title: "Spicy Szechuan Noodles",
     chef: "Chef Lin",
     chefRating: 4.9,

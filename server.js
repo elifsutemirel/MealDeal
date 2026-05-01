@@ -134,6 +134,121 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// --- RECIPE ENDPOINTS ---
+
+// GET All Public Recipes
+app.get('/api/recipes', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT r.recipe_id as id, r.title, r.media_url as image, r.dietary_tag as category,
+                   r.cook_time_min as time, r.difficulty_level as difficulty, r.preparation_steps as steps,
+                   u.username as chef
+            FROM "Recipe" r
+            JOIN "User" u ON r.creator_id = u.user_id
+            WHERE r.visibility = 'public'
+            ORDER BY r.creation_time DESC
+        `);
+        
+        const recipes = result.rows;
+        
+        for (let recipe of recipes) {
+            const ingResult = await pool.query(`
+                SELECT ri.qty as "baseQty", ri.unit, i.ingredient_id as id, i.name
+                FROM "Recipe_Ingredient" ri
+                JOIN "Ingredient" i ON ri.ingredient_id = i.ingredient_id
+                WHERE ri.recipe_id = $1
+            `, [recipe.id]);
+            
+            recipe.ingredients = ingResult.rows.map(ing => ({
+                id: ing.id,
+                name: ing.name,
+                baseQty: Number(ing.baseQty),
+                unit: ing.unit,
+                pricePerUnit: 1.99,
+                taxonomy: 'Produce'
+            }));
+            
+            if (recipe.steps) {
+                recipe.steps = recipe.steps.split('\n').filter(s => s.trim().length > 0);
+            } else {
+                recipe.steps = [];
+            }
+            
+            recipe.rating = 5.0;
+            recipe.reviews = [];
+            
+            if (!recipe.category) recipe.category = 'Standard';
+            if (!recipe.image) recipe.image = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800';
+        }
+        
+        res.json(recipes);
+    } catch (error) {
+        console.error("Error fetching recipes:", error);
+        res.status(500).json({ message: 'Error fetching recipes.' });
+    }
+});
+
+// CREATE Recipe
+app.post('/api/recipes', async (req, res) => {
+    const { creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, ingredients } = req.body;
+    
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // Insert Recipe
+        const recipeResult = await client.query(`
+            INSERT INTO "Recipe" (creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING recipe_id;
+        `, [
+            creator_id, 
+            title, 
+            description || null, 
+            preparation_steps || null, 
+            media_url || null, 
+            cook_time_min, 
+            difficulty_level, 
+            dietary_tag || null, 
+            base_servings || 1
+        ]);
+        
+        const recipeId = recipeResult.rows[0].recipe_id;
+
+        // Insert Ingredients
+        if (ingredients && ingredients.length > 0) {
+            for (const ing of ingredients) {
+                let actualIngredientId = ing.ingredient_id;
+                
+                // Ensure ingredient exists in local DB
+                const existingCheck = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name = $1', [ing.name]);
+                if (existingCheck.rows.length > 0) {
+                    actualIngredientId = existingCheck.rows[0].ingredient_id;
+                } else {
+                    // Insert the external ingredient
+                    const newIng = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ing.name]);
+                    actualIngredientId = newIng.rows[0].ingredient_id;
+                }
+
+                await client.query(`
+                    INSERT INTO "Recipe_Ingredient" (recipe_id, ingredient_id, qty, unit)
+                    VALUES ($1, $2, $3, $4);
+                `, [recipeId, actualIngredientId, ing.qty, ing.unit]);
+            }
+        }
+
+        await client.query('COMMIT');
+        res.status(201).json({ recipe_id: recipeId, message: 'Recipe created successfully.' });
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('RECIPE CREATION ERROR:', error);
+        res.status(500).json({ message: 'Error creating recipe.', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
 // --- CHEF ROYALTY ENDPOINTS ---
 
 // GET Chef Royalty Matrix
@@ -198,6 +313,38 @@ app.get('/api/ingredients', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Error fetching ingredients.' });
+    }
+});
+
+// SEARCH External Ingredients via USDA API
+app.get('/api/ingredients/search', async (req, res) => {
+    const query = req.query.q;
+    if (!query) return res.json([]);
+    try {
+        const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&api_key=DEMO_KEY&pageSize=30`);
+        const data = await response.json();
+        
+        if (!data.foods) return res.json([]);
+        
+        const uniqueNames = new Set();
+        const results = [];
+        
+        for (const food of data.foods) {
+            const lowerName = food.description.toLowerCase();
+            if (!uniqueNames.has(lowerName)) {
+                uniqueNames.add(lowerName);
+                results.push({
+                    ingredient_id: `external-${food.fdcId}`,
+                    name: food.description
+                });
+                if (results.length >= 10) break;
+            }
+        }
+        
+        res.json(results);
+    } catch (err) {
+        console.error("USDA API Search Error:", err);
+        res.status(500).json({ message: "Error searching ingredients" });
     }
 });
 

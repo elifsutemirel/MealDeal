@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, X, Clock, Star, Filter } from 'lucide-react';
 import { RECIPES } from '../../data/recipes';
 
@@ -7,12 +7,22 @@ export const ExploreView = ({ onSelectRecipe }) => {
   const [dietFilter, setDietFilter] = useState('All');
   const [maxTime, setMaxTime] = useState(60);
   const [minRating, setMinRating] = useState(0);
+  const [dbRecipes, setDbRecipes] = useState([]);
   
-  // Recipes imported from data/recipes via ES module
+  useEffect(() => {
+      fetch('/api/recipes')
+          .then(res => res.json())
+          .then(data => setDbRecipes(data))
+          .catch(err => console.error("Error fetching db recipes:", err));
+  }, []);
+
+  const allRecipes = useMemo(() => {
+      return [...dbRecipes, ...RECIPES];
+  }, [dbRecipes]);
 
   // Effective Filtering Logic
   const filteredRecipes = useMemo(() => {
-    return RECIPES.filter(recipe => {
+    return allRecipes.filter(recipe => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = recipe.title.toLowerCase().includes(searchLower) ||
         recipe.ingredients.some(i => i.name.toLowerCase().includes(searchLower)) ||
@@ -22,7 +32,7 @@ export const ExploreView = ({ onSelectRecipe }) => {
       const matchesRating = recipe.rating >= minRating;
       return matchesSearch && matchesDiet && matchesTime && matchesRating;
     });
-  }, [searchQuery, dietFilter, maxTime, minRating]);
+  }, [searchQuery, dietFilter, maxTime, minRating, allRecipes]);
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8">
