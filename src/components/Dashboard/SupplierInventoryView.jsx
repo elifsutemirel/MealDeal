@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
+const InventoryRow = ({ item, onUpdate, onDelete }) => {
 const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
   const [qty, setQty] = useState(item.available_qty);

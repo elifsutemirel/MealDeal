@@ -997,7 +997,6 @@ app.post('/api/checkout', async (req, res) => {
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
-
         // 2. Deduct Supplier Inventory
         if (items && items.length > 0) {
             for (const item of items) {
@@ -1015,9 +1014,76 @@ app.post('/api/checkout', async (req, res) => {
                 }
             }
         }
+        // 2. Create Cart
+        const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
+        const cartId = cartRes.rows[0].cart_id;
 
-        console.log(`[Checkout] User ${effectiveUserId} checked out ${items?.length || 0} items for $${totalAmount}.`);
-        console.log(`[Checkout] - 'Cook Action' hypothetically logged for Chef Royalty metric update.`);
+        // 3. Process each recipe in the cart and its selected ingredients
+        if (items && items.length > 0) {
+            console.log(`\x1b[32m[CHECKOUT START]\x1b[0m User: ${effectiveUserId}`);
+            
+            for (const cartEntry of items) {
+                const ingredients = cartEntry.recipe.cartIngredients || [];
+                const servingsFactor = Number(cartEntry.servings || 2) / 2;
+
+                for (const ing of ingredients) {
+                    const rawId = ing.id;
+                    const ingId = typeof rawId === 'string' && rawId.startsWith('i') 
+                        ? parseInt(rawId.replace('i','')) 
+                        : parseInt(rawId);
+                    
+                    if (isNaN(ingId)) continue;
+
+                    let invRes;
+                    // Eğer kullanıcı spesifik bir envanter (tedarikçi) seçmişse onu kullan
+                    if (ing.selectedInventoryId) {
+                        invRes = await client.query(
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                             FROM "SupplierInventory" si
+                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                             WHERE si.inventory_id = $1 AND si.available_qty > 0`, 
+                            [ing.selectedInventoryId]
+                        );
+                    } else {
+                        // Seçmemişse en ucuzunu bul
+                        invRes = await client.query(
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                             FROM "SupplierInventory" si
+                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                             WHERE si.ingredient_id = $1 AND si.available_qty > 0 
+                             ORDER BY si.price ASC LIMIT 1`, 
+                            [ingId]
+                        );
+                    }
+                    
+                    if (invRes.rows.length > 0) {
+                        const inv = invRes.rows[0];
+                        const qtyToDeduct = Number(ing.baseQty || 1) * servingsFactor;
+                        const newQty = Math.max(0, Number(inv.available_qty) - qtyToDeduct);
+                        
+                        console.log(`    - Processing: ${ing.name} | Deducting ${qtyToDeduct} from "${inv.location_name}"`);
+
+                        if (newQty <= 0) {
+                            // STOK BİTTİ -> SİL
+                            await client.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inv.inventory_id]);
+                            console.log(`      ✓ Stock reached 0. Item REMOVED from inventory.`);
+                        } else {
+                            // STOK VAR -> GÜNCELLE
+                            await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
+                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
+                        }
+
+                        await client.query(
+                            'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
+                            [cartId, inv.inventory_id, qtyToDeduct, inv.price]
+                        );
+                    }
+                }
+            }
+        }
+
+        // 4. Create Order
+        await client.query('INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)', [cartId, totalAmount || 0, 'pending']);
 
         await client.query('COMMIT');
         res.json({ message: 'Checkout successful! Order confirmed and inventory deducted.' });

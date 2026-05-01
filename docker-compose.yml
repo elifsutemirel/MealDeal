@@ -21,7 +21,10 @@ services:
       - mealdeal-network
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
     container_name: mealdeal-app
     ports:
       - "3000:3000"

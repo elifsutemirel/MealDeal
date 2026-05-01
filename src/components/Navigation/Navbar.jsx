@@ -10,6 +10,7 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
         <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">mealDeal</span>
       </div>
       <div className="hidden md:flex items-center gap-6">
+        {(!user || user.role !== 'Local Supplier') && ['explore', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
         {['explore', 'marketplace', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
           <button key={tab} onClick={() => setTab(tab)} className={`text-sm font-bold capitalize transition-all ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
             {tab.replace('-', ' ')}
@@ -52,10 +53,12 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
           <button onClick={() => setTab('profile')} className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors" title="My Profile">
             <Users size={20} />
           </button>
-          <button onClick={() => setTab('cart')} className="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors">
-            <ShoppingBasket size={20} />
-            {cartCount > 0 && <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cartCount}</span>}
-          </button>
+          {user.role !== 'Local Supplier' && (
+            <button onClick={() => setTab('cart')} className="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors">
+              <ShoppingBasket size={20} />
+              {cartCount > 0 && <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cartCount}</span>}
+            </button>
+          )}
           <button onClick={onLogout} className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
             <LogOut size={18} />
           </button>

@@ -66,7 +66,7 @@ export const CartView = ({ items, onRemove, onCheckoutComplete, user }) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          userId: user?.user_id || 1,
+          userId: user?.id || 1,
           totalAmount: parseFloat(total),
           items: items
         })
