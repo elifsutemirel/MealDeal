@@ -695,11 +695,9 @@ app.get('/api/leaderboard/global', async (req, res) => {
                 u.total AS meal_coins,
                 COUNT(c.comment_id) AS cooked_count
             FROM "User" u
-            JOIN "HomeCook" hc ON hc.user_id = u.user_id
             LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
             GROUP BY u.user_id, u.username, u.total
-            ORDER BY cooked_count DESC, meal_coins DESC
-            LIMIT 50;
+            ORDER BY cooked_count DESC, meal_coins DESC;
         `;
         const result = await pool.query(query);
         res.json(result.rows);
