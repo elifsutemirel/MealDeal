@@ -1,0 +1,87 @@
+// --- Challenges Data ---
+export const CHALLENGES = [
+  {
+    id: 1,
+    title: "Zero Waste Week",
+    description: "Cook only with ingredients you have at home. No new purchases!",
+    icon: "🌱",
+    difficulty: "Hard",
+    duration: "7 days",
+    prize: "Green Leaf Badge + 50 MealCoins",
+    participants: 342,
+    image: "https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&q=80&w=600",
+    status: "active",
+    progress: 45,
+    recipes: ["Organic Harvest Bowl", "Buddha Power Bowl", "Creamy Mushroom Risotto"]
+  },
+  {
+    id: 2,
+    title: "Under 20 Minutes Challenge",
+    description: "Prepare a delicious meal in 20 minutes or less!",
+    icon: "⚡",
+    difficulty: "Medium",
+    duration: "14 days",
+    prize: "Speed Chef Badge + 30 MealCoins",
+    participants: 618,
+    image: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&q=80&w=600",
+    status: "active",
+    progress: 62,
+    recipes: ["Seared Atlantic Salmon", "Pan-Seared Sea Bass", "Spicy Szechuan Noodles"]
+  },
+  {
+    id: 3,
+    title: "Vegan Venture",
+    description: "Try 5 different vegan recipes this month!",
+    icon: "🥬",
+    difficulty: "Easy",
+    duration: "30 days",
+    prize: "Plant-Based Master Badge + 75 MealCoins",
+    participants: 891,
+    image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600",
+    status: "active",
+    progress: 28,
+    recipes: ["Organic Harvest Bowl", "Buddha Power Bowl", "Spicy Szechuan Noodles"]
+  },
+  {
+    id: 4,
+    title: "Keto King",
+    description: "Complete 10 keto-friendly meals and log your progress!",
+    icon: "🥩",
+    difficulty: "Hard",
+    duration: "21 days",
+    prize: "Keto Champion Badge + 100 MealCoins",
+    participants: 245,
+    image: "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&q=80&w=600",
+    status: "active",
+    progress: 18,
+    recipes: ["Seared Atlantic Salmon", "Pan-Seared Sea Bass"]
+  },
+  {
+    id: 5,
+    title: "Fusion Flavor Fest",
+    description: "Cook one recipe from 3 different cuisines!",
+    icon: "🌍",
+    difficulty: "Medium",
+    duration: "14 days",
+    prize: "Global Palate Badge + 40 MealCoins",
+    participants: 523,
+    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=600",
+    status: "upcoming",
+    progress: 0,
+    recipes: ["Thai Green Curry with Chicken", "Truffle Pasta Carbonara", "Spicy Szechuan Noodles"]
+  },
+  {
+    id: 6,
+    title: "Budget Gourmet",
+    description: "Create a 3-course meal for under $15!",
+    icon: "💎",
+    difficulty: "Hard",
+    duration: "Ongoing",
+    prize: "Deal Hunter Badge + 60 MealCoins",
+    participants: 712,
+    image: "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600",
+    status: "active",
+    progress: 35,
+    recipes: ["Organic Harvest Bowl", "Creamy Mushroom Risotto", "Buddha Power Bowl"]
+  }
+];

@@ -253,6 +253,17 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+// Client-side error logging endpoint
+app.post('/api/client-error', (req, res) => {
+    try {
+        const info = req.body || {};
+        console.error('CLIENT ERROR LOG:', JSON.stringify(info, null, 2));
+    } catch (e) {
+        console.error('Failed to log client error', e);
+    }
+    res.status(204).end();
+});
+
 // 404 Catch-all
 app.use((req, res) => {
     console.log(`404 NOT FOUND: ${req.method} ${req.url}`);
