@@ -10,7 +10,6 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
         <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">mealDeal</span>
       </div>
       <div className="hidden md:flex items-center gap-6">
-        {(!user || user.role !== 'Local Supplier') && ['explore', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
         {['explore', 'marketplace', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
           <button key={tab} onClick={() => setTab(tab)} className={`text-sm font-bold capitalize transition-all ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
             {tab.replace('-', ' ')}
@@ -43,8 +42,8 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
       </button>
       {user ? (
         <>
-          <div 
-            onClick={() => setTab('profile')} 
+          <div
+            onClick={() => setTab('profile')}
             className="text-right hidden lg:block mr-2 cursor-pointer hover:opacity-80 transition-opacity"
           >
             <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{user.username || user.name}</p>
