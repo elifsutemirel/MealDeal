@@ -13,6 +13,25 @@ export const AuthView = ({ onLogin }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    // Validations
+    if (!isLogin && (!username || !email || !password)) {
+      setError('Please fill in all fields.');
+      return;
+    }
+    if (!email || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (!isLogin && username.length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
+    
     setLoading(true);
     try {
       if (isLogin) {
@@ -27,9 +46,6 @@ export const AuthView = ({ onLogin }) => {
         onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
       } else {
         // REGISTER — calls backend which runs the SQL registration queries
-        if (!username || !email || !password) {
-          throw new Error('Please fill in all fields.');
-        }
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

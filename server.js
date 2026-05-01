@@ -260,6 +260,119 @@ app.put('/api/supplier/inventory/:id', async (req, res) => {
     }
 });
 
+// --- MEAL LIST ENDPOINTS ---
+
+// GET All Meal Lists for a User
+app.get('/api/meallist', async (req, res) => {
+    const userId = req.query.userId;
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+
+    try {
+        const query = `
+            SELECT ml.*, COUNT(DISTINCT mli.recipe_id) as recipe_count
+            FROM "MealList" ml
+            LEFT JOIN "MealListItem" mli ON mli.meal_list_id = ml.meal_list_id
+            WHERE ml.user_id = $1
+            GROUP BY ml.meal_list_id
+            ORDER BY ml.created_date DESC;
+        `;
+        const result = await pool.query(query, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching meal lists.' });
+    }
+});
+
+// GET Recipes in a Meal List
+app.get('/api/meallist/:id/recipes', async (req, res) => {
+    const mealListId = req.params.id;
+    try {
+        const query = `
+            SELECT r.* FROM "Recipe" r
+            JOIN "MealListItem" mli ON mli.recipe_id = r.recipe_id
+            WHERE mli.meal_list_id = $1
+            ORDER BY mli.added_date DESC;
+        `;
+        const result = await pool.query(query, [mealListId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching recipes.' });
+    }
+});
+
+// CREATE a new Meal List
+app.post('/api/meallist', async (req, res) => {
+    const { user_id, name, description } = req.body;
+    try {
+        const query = `
+            INSERT INTO "MealList" (user_id, name, description, created_date)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            RETURNING *;
+        `;
+        const result = await pool.query(query, [user_id, name, description || '']);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error creating meal list.' });
+    }
+});
+
+// ADD Recipe to Meal List
+app.post('/api/meallist/:id/recipe', async (req, res) => {
+    const mealListId = req.params.id;
+    const { recipe_id } = req.body;
+    try {
+        // Check if already exists
+        const existing = await pool.query(
+            'SELECT * FROM "MealListItem" WHERE meal_list_id = $1 AND recipe_id = $2',
+            [mealListId, recipe_id]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ message: 'Recipe already in this meal list.' });
+        }
+
+        const query = `
+            INSERT INTO "MealListItem" (meal_list_id, recipe_id, added_date)
+            VALUES ($1, $2, CURRENT_TIMESTAMP)
+            RETURNING *;
+        `;
+        const result = await pool.query(query, [mealListId, recipe_id]);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error adding recipe to meal list.' });
+    }
+});
+
+// REMOVE Recipe from Meal List
+app.delete('/api/meallist/:id/recipe/:recipeId', async (req, res) => {
+    const { id, recipeId } = req.params;
+    try {
+        await pool.query(
+            'DELETE FROM "MealListItem" WHERE meal_list_id = $1 AND recipe_id = $2',
+            [id, recipeId]
+        );
+        res.json({ message: 'Recipe removed from meal list.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error removing recipe.' });
+    }
+});
+
+// DELETE a Meal List
+app.delete('/api/meallist/:id', async (req, res) => {
+    const mealListId = req.params.id;
+    try {
+        await pool.query('DELETE FROM "MealList" WHERE meal_list_id = $1', [mealListId]);
+        res.json({ message: 'Meal list deleted.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Error deleting meal list.' });
+    }
+});
+
 // =============================================================
 // CHALLENGE ENDPOINTS
 // =============================================================
@@ -270,12 +383,12 @@ async function seedChallengesIfEmpty() {
     if (parseInt(count.rows[0].count) > 0) return;
 
     const SEED = [
-        { title: 'Zero Waste Week',            description: 'Cook only with ingredients you have at home. No new purchases!', start_date: '2026-05-01', end_date: '2026-05-07' },
-        { title: 'Under 20 Minutes Challenge', description: 'Prepare a delicious meal in 20 minutes or less!',                start_date: '2026-05-01', end_date: '2026-05-14' },
-        { title: 'Vegan Venture',              description: 'Try 5 different vegan recipes this month!',                        start_date: '2026-05-01', end_date: '2026-05-31' },
-        { title: 'Keto King',                  description: 'Complete 10 keto-friendly meals and log your progress!',           start_date: '2026-05-01', end_date: '2026-05-21' },
-        { title: 'Fusion Flavor Fest',         description: 'Cook one recipe from 3 different cuisines!',                       start_date: '2026-06-01', end_date: '2026-06-14' },
-        { title: 'Budget Gourmet',             description: 'Create a 3-course meal for under $15!',                            start_date: '2026-05-01', end_date: '2026-12-31' },
+        { title: 'Zero Waste Week', description: 'Cook only with ingredients you have at home. No new purchases!', start_date: '2026-05-01', end_date: '2026-05-07' },
+        { title: 'Under 20 Minutes Challenge', description: 'Prepare a delicious meal in 20 minutes or less!', start_date: '2026-05-01', end_date: '2026-05-14' },
+        { title: 'Vegan Venture', description: 'Try 5 different vegan recipes this month!', start_date: '2026-05-01', end_date: '2026-05-31' },
+        { title: 'Keto King', description: 'Complete 10 keto-friendly meals and log your progress!', start_date: '2026-05-01', end_date: '2026-05-21' },
+        { title: 'Fusion Flavor Fest', description: 'Cook one recipe from 3 different cuisines!', start_date: '2026-06-01', end_date: '2026-06-14' },
+        { title: 'Budget Gourmet', description: 'Create a 3-course meal for under $15!', start_date: '2026-05-01', end_date: '2026-12-31' },
     ];
 
     for (const c of SEED) {
@@ -312,12 +425,12 @@ app.get('/api/challenges', async (req, res) => {
         `);
 
         const DISPLAY = {
-            'Zero Waste Week':            { icon: '🌱', difficulty: 'Hard',   duration: '7 days',   prize: 'Green Leaf Badge + 50 MealCoins',        image: 'https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&q=80&w=600' },
-            'Under 20 Minutes Challenge': { icon: '⚡', difficulty: 'Medium', duration: '14 days',  prize: 'Speed Chef Badge + 30 MealCoins',         image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&q=80&w=600' },
-            'Vegan Venture':              { icon: '🥬', difficulty: 'Easy',   duration: '30 days',  prize: 'Plant-Based Master Badge + 75 MealCoins', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600' },
-            'Keto King':                  { icon: '🥩', difficulty: 'Hard',   duration: '21 days',  prize: 'Keto Champion Badge + 100 MealCoins',     image: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&q=80&w=600' },
-            'Fusion Flavor Fest':         { icon: '🌍', difficulty: 'Medium', duration: '14 days',  prize: 'Global Palate Badge + 40 MealCoins',      image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=600' },
-            'Budget Gourmet':             { icon: '💎', difficulty: 'Hard',   duration: 'Ongoing',  prize: 'Deal Hunter Badge + 60 MealCoins',        image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' },
+            'Zero Waste Week': { icon: '🌱', difficulty: 'Hard', duration: '7 days', prize: 'Green Leaf Badge + 50 MealCoins', image: 'https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&q=80&w=600' },
+            'Under 20 Minutes Challenge': { icon: '⚡', difficulty: 'Medium', duration: '14 days', prize: 'Speed Chef Badge + 30 MealCoins', image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?auto=format&fit=crop&q=80&w=600' },
+            'Vegan Venture': { icon: '🥬', difficulty: 'Easy', duration: '30 days', prize: 'Plant-Based Master Badge + 75 MealCoins', image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600' },
+            'Keto King': { icon: '🥩', difficulty: 'Hard', duration: '21 days', prize: 'Keto Champion Badge + 100 MealCoins', image: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&q=80&w=600' },
+            'Fusion Flavor Fest': { icon: '🌍', difficulty: 'Medium', duration: '14 days', prize: 'Global Palate Badge + 40 MealCoins', image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=600' },
+            'Budget Gourmet': { icon: '💎', difficulty: 'Hard', duration: 'Ongoing', prize: 'Deal Hunter Badge + 60 MealCoins', image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' },
         };
 
         const rows = result.rows.map(r => ({

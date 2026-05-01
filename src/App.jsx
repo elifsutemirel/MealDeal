@@ -8,6 +8,7 @@ import { CartView } from './components/Cart/CartView';
 import { ChallengesView } from './components/Challenges/ChallengesView';
 import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
+import { MealListView } from './components/MealLists/MealListView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -18,6 +19,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState('explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cart, setCart] = useState([]);
+  const [mealLists, setMealLists] = useState([]);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('darkMode') === 'true';
@@ -33,6 +35,25 @@ export default function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Fetch Meal Lists when user logs in
+  useEffect(() => {
+    if (user?.id) {
+      fetchMealLists();
+    }
+  }, [user?.id]);
+
+  const fetchMealLists = async () => {
+    try {
+      const res = await fetch(`/api/meallist?userId=${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMealLists(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch meal lists:', err);
+    }
+  };
 
   const handleAddToCart = (recipe, servings) => {
     setCart([...cart, { recipe, servings }]);
@@ -65,7 +86,7 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto px-6 py-4">
         {selectedRecipe ? (
-          <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} />
+          <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
         ) : (
           <>
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
@@ -74,20 +95,7 @@ export default function App() {
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
-            {currentTab === 'my-meals' && (
-              <div className="py-24 text-center">
-                <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300 dark:text-slate-600"><ListPlus size={32} /></div>
-                <h2 className="text-lg font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">My Meal Lists</h2>
-                {user ? (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-2">Organize your favorite recipes here.</p>
-                ) : (
-                  <div className="mt-4">
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium mb-4">You must be logged in to save meal lists.</p>
-                    <button onClick={() => setCurrentTab('auth')} className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold text-xs hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors">Sign In / Register</button>
-                  </div>
-                )}
-              </div>
-            )}
+            {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
           </>
         )}

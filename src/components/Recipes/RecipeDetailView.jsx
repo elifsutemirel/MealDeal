@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus } from 'lucide-react';
 import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 
-export const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
+export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
   const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ ...i, selected: true })));
@@ -12,6 +12,11 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+
+  // Meal List state
+  const [userMealLists, setUserMealLists] = useState([]);
+  const [showMealListModal, setShowMealListModal] = useState(false);
+  const [mealListLoading, setMealListLoading] = useState(false);
 
   // Recalculate quantities and price based on servings and selection
   const scaleFactor = servings / 2;
@@ -80,6 +85,48 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
   };
 
   const missingIngredientsCount = ingredientsState.filter(i => i.status === 'missing').length;
+
+  const handleOpenMealListModal = async () => {
+    if (!user) {
+      alert('Please sign in to save recipes to meal lists');
+      return;
+    }
+    setMealListLoading(true);
+    try {
+      const res = await fetch(`/api/meallist?userId=${user.id}`);
+      if (res.ok) {
+        const lists = await res.json();
+        setUserMealLists(lists);
+        setShowMealListModal(true);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to load meal lists');
+    } finally {
+      setMealListLoading(false);
+    }
+  };
+
+  const handleAddToMealList = async (mealListId) => {
+    try {
+      const res = await fetch(`/api/meallist/${mealListId}/recipe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipe_id: recipe.id })
+      });
+      if (res.ok) {
+        alert(`Added to meal list!`);
+        setShowMealListModal(false);
+        if (onRecipeAddedToList) onRecipeAddedToList();
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to add recipe');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error adding to meal list');
+    }
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-500 pt-8 pb-20">
@@ -215,7 +262,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
               <ShoppingBasket size={18} />
               {missingIngredientsCount > 0 ? 'Resolve Missing Items' : 'Shop This Meal'}
             </button>
-            <button className="w-full mt-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 py-3 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:border-slate-400 dark:hover:border-slate-500 transition-all flex items-center justify-center gap-2">
+            <button onClick={handleOpenMealListModal} className="w-full mt-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 py-3 rounded-2xl font-black uppercase tracking-widest text-[9px] hover:border-slate-400 dark:hover:border-slate-500 transition-all flex items-center justify-center gap-2">
               <ListPlus size={14} /> Add to Meal List
             </button>
           </div>
@@ -271,6 +318,42 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart }) => {
                     <button onClick={handleApplySubstitution} className="flex-1 py-3 bg-indigo-600 dark:bg-indigo-600 text-white rounded-2xl text-xs font-bold hover:bg-indigo-700 dark:hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200 dark:shadow-indigo-900/20">Apply Substitute</button>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MEAL LIST MODAL */}
+      {showMealListModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-900/40 dark:bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowMealListModal(false)} />
+          <div className="relative bg-white dark:bg-slate-800 w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 overflow-hidden">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 dark:text-white">Add to Meal List</h3>
+                <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase mt-1">Recipe: {recipe.title}</p>
+              </div>
+              <button onClick={() => setShowMealListModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-500"><X size={20} /></button>
+            </div>
+
+            {userMealLists.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-400 dark:text-slate-500 text-sm font-medium mb-4">No meal lists yet</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Create your first meal list to save recipes</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {userMealLists.map(list => (
+                  <button
+                    key={list.meal_list_id}
+                    onClick={() => handleAddToMealList(list.meal_list_id)}
+                    className="w-full text-left p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all"
+                  >
+                    <p className="font-bold text-slate-800 dark:text-white">{list.name}</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">{list.recipe_count || 0} recipes</p>
+                  </button>
+                ))}
               </div>
             )}
           </div>

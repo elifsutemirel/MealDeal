@@ -87,15 +87,30 @@ export const SupplierInventoryView = ({ user }) => {
   };
 
   const handleAdd = async () => {
+    if (!newItem.ingredient_id || !newItem.price || !newItem.available_qty) {
+      alert('Please fill in all fields');
+      return;
+    }
     try {
       await fetch('/api/supplier/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newItem, supplier_id: user.id })
+        body: JSON.stringify({ 
+          ingredient_id: parseInt(newItem.ingredient_id),
+          unit: newItem.unit, 
+          price: parseFloat(newItem.price), 
+          package_size: newItem.package_size,
+          available_qty: parseFloat(newItem.available_qty), 
+          supplier_id: user.id 
+        })
       });
       setShowAdd(false);
+      setNewItem({ ingredient_id: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
       fetchInventory();
-    } catch (err) { console.error(err); }
+    } catch (err) { 
+      console.error(err); 
+      alert('Failed to add item');
+    }
   };
 
   if (loading) return <div className="py-24 text-center animate-pulse text-slate-400">Loading Inventory...</div>;
