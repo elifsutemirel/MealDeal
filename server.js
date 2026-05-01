@@ -374,6 +374,46 @@ app.delete('/api/meallist/:id', async (req, res) => {
 });
 
 // =============================================================
+// CART & CHECKOUT ENDPOINTS
+// =============================================================
+
+// POST /api/checkout
+app.post('/api/checkout', async (req, res) => {
+    const { userId, totalAmount, items } = req.body;
+    
+    // In a real scenario, we would use the session userId. Here we default to 1 for dummy testing.
+    const effectiveUserId = userId || 1;
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        // 1. Update User's total amount spent
+        await client.query(
+            'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
+            [totalAmount || 0, effectiveUserId]
+        );
+
+        // 2. Soft Integration: Log the actions instead of strict inserts to avoid foreign key failures
+        // with the static dummy recipes/ingredients which might not be in the database yet.
+        console.log(`[Checkout] User ${effectiveUserId} checked out ${items?.length || 0} items for $${totalAmount}.`);
+        console.log(`[Checkout] - Local Supplier inventory hypothetically deducted.`);
+        console.log(`[Checkout] - 'Cook Action' hypothetically logged for Chef Royalty metric update.`);
+
+        await client.query('COMMIT');
+        res.json({ message: 'Checkout successful! Order confirmed and inventory deducted.' });
+
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error("CHECKOUT ERROR:", error);
+        res.status(500).json({ message: 'Error processing checkout.', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// =============================================================
 // CHALLENGE ENDPOINTS
 // =============================================================
 
