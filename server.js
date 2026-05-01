@@ -572,6 +572,87 @@ app.post('/api/client-error', (req, res) => {
     res.status(204).end();
 });
 
+// =============================================================
+// LEADERBOARDS & ACHIEVEMENTS ENDPOINTS
+// =============================================================
+
+// GET /api/leaderboard/global — Top Home Cooks by recipes cooked
+app.get('/api/leaderboard/global', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                u.user_id, 
+                u.username, 
+                u.total AS meal_coins,
+                COUNT(c.comment_id) AS cooked_count
+            FROM "User" u
+            JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
+            GROUP BY u.user_id, u.username, u.total
+            ORDER BY cooked_count DESC, meal_coins DESC
+            LIMIT 50;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('GLOBAL LEADERBOARD ERROR:', error);
+        res.status(500).json({ message: 'Error fetching global leaderboard.', detail: error.message });
+    }
+});
+
+// GET /api/users/:id/achievements — Get dynamic badges and stats for a user
+app.get('/api/users/:id/achievements', async (req, res) => {
+    const userId = req.params.id;
+    try {
+        // 1. Get total cooked recipes
+        const cookedResult = await pool.query(
+            `SELECT COUNT(*) as cooked_count FROM "Comment" WHERE user_id = $1 AND cooked_at IS NOT NULL`,
+            [userId]
+        );
+        const cookedCount = parseInt(cookedResult.rows[0].cooked_count) || 0;
+
+        // 2. Get joined challenges
+        const joinedResult = await pool.query(
+            `SELECT COUNT(*) as joined_count FROM "HomeCook_Challenge" WHERE user_id = $1`,
+            [userId]
+        );
+        const joinedCount = parseInt(joinedResult.rows[0].joined_count) || 0;
+
+        // 3. Get user details (MealCoins)
+        const userResult = await pool.query(`SELECT total FROM "User" WHERE user_id = $1`, [userId]);
+        const mealCoins = userResult.rows.length > 0 ? parseFloat(userResult.rows[0].total) : 0;
+
+        // 4. Calculate Badges dynamically
+        const badges = [];
+
+        // Cooking Badges
+        if (cookedCount >= 1) badges.push({ id: 'first_cook', name: 'First Cook', icon: '🍳', description: 'Cooked your first recipe on MealDeal!', color: 'emerald' });
+        if (cookedCount >= 5) badges.push({ id: 'chef_training', name: 'Chef in Training', icon: '👨‍🍳', description: 'Cooked 5 recipes.', color: 'amber' });
+        if (cookedCount >= 10) badges.push({ id: 'master_cook', name: 'Master Cook', icon: '👑', description: 'Cooked 10 recipes.', color: 'purple' });
+        if (cookedCount >= 50) badges.push({ id: 'legendary_cook', name: 'Legendary Cook', icon: '🌟', description: 'Cooked 50 recipes.', color: 'orange' });
+
+        // Challenge Badges
+        if (joinedCount >= 1) badges.push({ id: 'challenger', name: 'Challenger', icon: '⚔️', description: 'Joined your first kitchen challenge.', color: 'blue' });
+        if (joinedCount >= 5) badges.push({ id: 'challenge_veteran', name: 'Challenge Veteran', icon: '🛡️', description: 'Joined 5 kitchen challenges.', color: 'indigo' });
+
+        // MealCoin Badges
+        if (mealCoins >= 50) badges.push({ id: 'deal_hunter', name: 'Deal Hunter', icon: '💎', description: 'Earned 50 MealCoins.', color: 'teal' });
+        if (mealCoins >= 200) badges.push({ id: 'meal_mogul', name: 'Meal Mogul', icon: '🏦', description: 'Accumulated 200 MealCoins.', color: 'yellow' });
+
+        res.json({
+            stats: {
+                cookedCount,
+                joinedCount,
+                mealCoins
+            },
+            badges
+        });
+    } catch (error) {
+        console.error('ACHIEVEMENTS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching achievements.', detail: error.message });
+    }
+});
+
 // Fallback to index.html for client-side routing (must be after all /api routes)
 app.use((req, res) => {
     res.sendFile('dist/index.html', { root: __dirname });
