@@ -93,7 +93,7 @@ export default function App() {
           <>
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
-            {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} />}
+            {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
