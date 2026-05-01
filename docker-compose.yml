@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mealdeal-db
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-password}
+      POSTGRES_DB: ${PGDATABASE:-mealdeal}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mealdeal-network
+
+  app:
+    build: .
+    container_name: mealdeal-app
+    ports:
+      - "3000:3000"
+    environment:
+      PGHOST: postgres
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-password}
+      PGDATABASE: ${PGDATABASE:-mealdeal}
+      PGPORT: 5432
+      PORT: 3000
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mealdeal-network
+
+volumes:
+  postgres_data:
+
+networks:
+  mealdeal-network:
+    driver: bridge

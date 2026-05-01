@@ -4,8 +4,13 @@ const { Pool } = pkg;
 import dotenv from 'dotenv';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(express.json());
@@ -17,7 +22,9 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/', (req, res) => res.send('Backend is running!'));
+// Serve static files from dist directory (built frontend)
+app.use(express.static('dist'));
+
 app.get('/api/debug', (req, res) => res.json({ message: 'API is reachable!', routes: ['/api/auth/register', '/api/auth/login', '/api/supplier/inventory'] }));
 
 // PostgreSQL connection pool
@@ -264,10 +271,9 @@ app.post('/api/client-error', (req, res) => {
     res.status(204).end();
 });
 
-// 404 Catch-all
+// Fallback to index.html for client-side routing (must be after all /api routes)
 app.use((req, res) => {
-    console.log(`404 NOT FOUND: ${req.method} ${req.url}`);
-    res.status(404).json({ message: `Route ${req.method} ${req.url} not found on this server.` });
+    res.sendFile('dist/index.html', { root: __dirname });
 });
 
 const PORT = process.env.PORT || 3001;
