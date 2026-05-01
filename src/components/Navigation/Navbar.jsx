@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, ShoppingBasket, Users, Moon, Sun } from 'lucide-react';
+import { ShoppingBasket, Users, Moon, Sun } from 'lucide-react';
 import { LogOut } from '../Common/LogOut';
 
 export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode, setDarkMode }) => (
@@ -10,14 +10,14 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
         <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">mealDeal</span>
       </div>
       <div className="hidden md:flex items-center gap-6">
-        {['explore', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
+        {['explore', 'marketplace', 'challenges', 'leaderboards', 'my-meals'].map((tab) => (
           <button key={tab} onClick={() => setTab(tab)} className={`text-sm font-bold capitalize transition-all ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
             {tab.replace('-', ' ')}
           </button>
         ))}
-        {user && user.role === 'Verified Chef' && (
+        {user && ['Home Cook', 'Verified Chef'].includes(user.role) && (
           <button onClick={() => setTab('dashboard')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'dashboard' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
-            Dashboard
+            Royalties
           </button>
         )}
         {user && user.role === 'Local Supplier' && (
@@ -42,10 +42,16 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
       </button>
       {user ? (
         <>
-          <div className="text-right hidden lg:block mr-2">
-            <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{user.name}</p>
+          <div 
+            onClick={() => setTab('profile')} 
+            className="text-right hidden lg:block mr-2 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            <p className="text-xs font-black text-slate-900 dark:text-white leading-tight">{user.username || user.name}</p>
             <p className="text-[9px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-widest">{user.role}</p>
           </div>
+          <button onClick={() => setTab('profile')} className="p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors" title="My Profile">
+            <Users size={20} />
+          </button>
           <button onClick={() => setTab('cart')} className="relative p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-full transition-colors">
             <ShoppingBasket size={20} />
             {cartCount > 0 && <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cartCount}</span>}

@@ -7,10 +7,12 @@ import { RecipeDetailView } from './components/Recipes/RecipeDetailView';
 import { CartView } from './components/Cart/CartView';
 import { ChallengesView } from './components/Challenges/ChallengesView';
 import { LeaderboardView } from './components/Leaderboard/LeaderboardView';
-import { ChefAnalyticsView } from './components/Dashboard/ChefAnalyticsView';
+import { CreatorRoyaltyDashboardView } from './components/Dashboard/CreatorRoyaltyDashboardView';
 import { SupplierInventoryView } from './components/Dashboard/SupplierInventoryView';
 import { MealListView } from './components/MealLists/MealListView';
 import { RecipeCreateView } from './components/Recipes/RecipeCreateView';
+import { ProfileView } from './components/Profile/ProfileView';
+import { SupplierMarketplaceView } from './components/Marketplace/SupplierMarketplaceView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -108,14 +110,16 @@ export default function App() {
           <>
             {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
-            {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} />}
+            {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
+            {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
             {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
-            {currentTab === 'dashboard' && user?.role === 'Verified Chef' && <ChefAnalyticsView user={user} />}
+            {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
             {currentTab === 'create-recipe' && (user?.role === 'Verified Chef' || user?.role === 'Home Cook') && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
+            {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
           </>
         )}
       </main>

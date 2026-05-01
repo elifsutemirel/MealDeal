@@ -1,11 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus } from 'lucide-react';
+import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send } from 'lucide-react';
 import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
-  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ ...i, selected: true })));
+  const [ingredientsState, setIngredientsState] = useState(recipe.ingredients.map(i => ({ 
+    ...i, 
+    selected: true,
+    selectedSupplier: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0] : null,
+    pricePerUnit: i.suppliers && i.suppliers.length > 0 ? i.suppliers[0].price : i.pricePerUnit
+  })));
 
   // AI substitution state
   const [aiTargetIngredient, setAiTargetIngredient] = useState(null);
@@ -18,6 +23,48 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const [showMealListModal, setShowMealListModal] = useState(false);
   const [mealListLoading, setMealListLoading] = useState(false);
 
+  // Review state
+  const [reviews, setReviews] = useState(recipe.reviews || []);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewRating, setReviewRating] = useState(0);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState(null);
+  const [reviewSuccess, setReviewSuccess] = useState(false);
+
+  const canReview = user && (user.role === 'Home Cook' || user.role === 'Verified Chef');
+
+  const handleSubmitReview = async () => {
+    if (!reviewText.trim() || reviewRating === 0) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+    try {
+      const res = await fetch(`/api/recipe/${recipe.id}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          rating: reviewRating,
+          comment: reviewText.trim()
+        })
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to post review');
+      }
+      const newReview = await res.json();
+      setReviews(prev => [newReview, ...prev]);
+      setReviewText('');
+      setReviewRating(0);
+      setReviewSuccess(true);
+      setTimeout(() => setReviewSuccess(false), 3000);
+    } catch (err) {
+      setReviewError(err.message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
   // Recalculate quantities and price based on servings and selection
   const scaleFactor = servings / 2;
 
@@ -29,6 +76,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
   const handleToggleIngredient = (id) => {
     setIngredientsState(prev => prev.map(i => i.id === id ? { ...i, selected: !i.selected } : i));
+  };
+
+  const handleSupplierChange = (id, supplierId) => {
+    setIngredientsState(prev => prev.map(i => {
+      if (i.id === id) {
+        const sup = i.suppliers.find(s => s.supplier_id === parseInt(supplierId));
+        return { ...i, selectedSupplier: sup, pricePerUnit: sup ? sup.price : i.pricePerUnit };
+      }
+      return i;
+    }));
   };
 
   const handleRequestAI = (ingredient) => {
@@ -176,24 +233,47 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       />
                       <div>
                         <p className={`font-bold text-slate-800 dark:text-white ${!ing.selected && 'line-through'}`}>{ing.name}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy}</p>
+                        {ing.suppliers && ing.suppliers.length > 0 ? (
+                          <div className="mt-1">
+                            <select 
+                              value={ing.selectedSupplier?.supplier_id || ''} 
+                              onChange={(e) => handleSupplierChange(ing.id, e.target.value)}
+                              disabled={!ing.selected}
+                              className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 border-none rounded px-2 py-1 outline-none"
+                            >
+                              {ing.suppliers.map(s => (
+                                <option key={s.supplier_id} value={s.supplier_id}>
+                                  {s.supplier_name} ({s.location_name}) - ${s.price}/{ing.unit}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy || 'No local supplier'}</p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-right">
-                      {/* Interactive AI Suggestion Button per Ingredient */}
-                      <button
-                        onClick={() => handleRequestAI(ing)}
-                        className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
-                        title={`Ask AI to substitute ${ing.name}`}
-                      >
-                        <Sparkles size={16} />
-                      </button>
+                      {/* Interactive AI Suggestion Button per Ingredient (only if missing and logged in) */}
+                      {user && ing.status === 'missing' && (
+                        <button
+                          onClick={() => handleRequestAI(ing)}
+                          className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
+                          title={`Ask AI to substitute ${ing.name}`}
+                        >
+                          <Sparkles size={16} />
+                        </button>
+                      )}
 
-                      <div className="w-20">
-                        <p className="font-black text-slate-900">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
-                        <span className={`text-[9px] font-black uppercase tracking-tighter flex items-center gap-1 justify-end ${ing.status === 'available' ? 'text-emerald-500' : ing.status === 'missing' ? 'text-red-500' : 'text-orange-500'}`}>
-                          <div className={`w-1.5 h-1.5 rounded-full ${ing.status === 'available' ? 'bg-emerald-500' : ing.status === 'missing' ? 'bg-red-500' : 'bg-orange-500'}`} /> {ing.status}
-                        </span>
+                      <div className="w-28 flex flex-col items-end gap-1">
+                        <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
+                        {user && (
+                          <div 
+                            className={`w-full px-2 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all ${ing.status === 'available' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border-emerald-200 dark:border-emerald-800' : ing.status === 'missing' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 border-red-200 dark:border-red-800' : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 border-orange-200 dark:border-orange-800'}`}
+                          >
+                            <div className={`w-1.5 h-1.5 rounded-full ${ing.status === 'available' ? 'bg-emerald-500' : ing.status === 'missing' ? 'bg-red-500' : 'bg-orange-500'}`} /> {ing.status}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -212,14 +292,82 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
             )}
             {activeSubView === 'reviews' && (
               <div className="space-y-6">
-                {recipe.reviews.map((rev, idx) => (
-                  <div key={idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-slate-800 dark:text-white text-sm">{rev.user}</span>
+                {/* Review Form — only for Home Cooks & Verified Chefs */}
+                {canReview && (
+                  <div className="p-6 bg-emerald-50 dark:bg-emerald-900/10 rounded-2xl border border-emerald-100 dark:border-emerald-800">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4">Write a Review</h4>
+                    {reviewSuccess && (
+                      <div className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 p-3 rounded-xl text-xs font-bold mb-4 animate-in fade-in">✓ Review posted successfully!</div>
+                    )}
+                    {reviewError && (
+                      <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-bold mb-4">{reviewError}</div>
+                    )}
+                    <div className="flex items-center gap-1 mb-4">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <button
+                          key={star}
+                          onClick={() => setReviewRating(star)}
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(0)}
+                          className="transition-transform hover:scale-110"
+                        >
+                          <Star
+                            size={24}
+                            className={`transition-colors ${(hoverRating || reviewRating) >= star ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`}
+                          />
+                        </button>
+                      ))}
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-500 ml-2">
+                        {reviewRating > 0 ? `${reviewRating}/5` : 'Select rating'}
+                      </span>
                     </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 italic">"{rev.comment}"</p>
+                    <textarea
+                      value={reviewText}
+                      onChange={(e) => setReviewText(e.target.value)}
+                      placeholder="Share your experience with this recipe..."
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 h-20 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                    />
+                    <button
+                      onClick={handleSubmitReview}
+                      disabled={!reviewText.trim() || reviewRating === 0 || reviewSubmitting}
+                      className={`mt-3 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all ${!reviewText.trim() || reviewRating === 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'}`}
+                    >
+                      {reviewSubmitting ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> : <Send size={14} />}
+                      {reviewSubmitting ? 'Posting...' : 'Submit Review'}
+                    </button>
                   </div>
-                ))}
+                )}
+                {!canReview && user && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                    Only Home Cooks and Verified Chefs can post reviews.
+                  </div>
+                )}
+                {!user && (
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                    Sign in to leave a review.
+                  </div>
+                )}
+
+                {/* Existing Reviews */}
+                {reviews.length === 0 ? (
+                  <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">No reviews yet</div>
+                ) : (
+                  reviews.map((rev, idx) => (
+                    <div key={rev.id || idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl animate-in fade-in">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-slate-800 dark:text-white text-sm">{rev.user}</span>
+                        {rev.rating && (
+                          <div className="flex items-center gap-0.5">
+                            {[1,2,3,4,5].map(s => (
+                              <Star key={s} size={12} className={`${s <= rev.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 italic">"{rev.comment}"</p>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
