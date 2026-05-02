@@ -203,7 +203,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onCookLogged })
                 {recipes.map((recipe) => {
                   const isCooked = cookedRecipeIds.has(recipe.recipe_id);
                   const isCooking = cookingRecipeId === recipe.recipe_id;
-                  const canCook = user && user.role === 'Home Cook' && !isCooked && challenge.status === 'active';
+                  const canCook = user && ['Home Cook', 'Verified Chef'].includes(user.role) && !isCooked && challenge.status === 'active';
 
                   return (
                     <div

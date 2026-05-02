@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ListPlus } from 'lucide-react';
 import { AuthView } from './components/Auth/AuthView';
 import { Navbar } from './components/Navigation/Navbar';
 import { ExploreView } from './components/Recipes/ExploreView';
@@ -14,6 +13,9 @@ import { MealListView } from './components/MealLists/MealListView';
 import { RecipeCreateView } from './components/Recipes/RecipeCreateView';
 import { ProfileView } from './components/Profile/ProfileView';
 import { SupplierMarketplaceView } from './components/Marketplace/SupplierMarketplaceView';
+import { VerifiedChefApplicationPage } from './components/Dashboard/VerifiedChefApplicationPage';
+import { AdminVerifiedChefApplicationsPage } from './components/Dashboard/AdminVerifiedChefApplicationsPage';
+import { AdminDashboardPage } from './components/Dashboard/AdminDashboardPage';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -63,6 +65,13 @@ export default function App() {
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    if (user?.role === 'Administrator' && !['admin-dashboard', 'admin-applications', 'auth'].includes(currentTab)) {
+      setCurrentTab('admin-dashboard');
+      setSelectedRecipe(null);
+    }
+  }, [user?.role, currentTab]);
+
   const fetchMealLists = async () => {
     try {
       const res = await fetch(`/api/meallist?userId=${user.id}`);
@@ -109,7 +118,16 @@ export default function App() {
           <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
         ) : (
           <>
-            {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }} />}
+            {currentTab === 'auth' && <AuthView onLogin={(userData) => {
+              setUser(userData);
+              setCurrentTab(
+                userData.role === 'Administrator'
+                  ? 'admin-dashboard'
+                  : userData.role === 'Local Supplier'
+                    ? 'inventory'
+                    : 'explore'
+              );
+            }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
             {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
@@ -121,6 +139,9 @@ export default function App() {
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
             {currentTab === 'create-recipe' && (user?.role === 'Verified Chef' || user?.role === 'Home Cook') && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
+            {currentTab === 'verified-chef-application' && user?.role === 'Home Cook' && <VerifiedChefApplicationPage user={user} setUser={setUser} />}
+            {currentTab === 'admin-dashboard' && user?.role === 'Administrator' && <AdminDashboardPage user={user} setTab={setCurrentTab} />}
+            {currentTab === 'admin-applications' && user?.role === 'Administrator' && <AdminVerifiedChefApplicationsPage user={user} />}
             {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
           </>
         )}

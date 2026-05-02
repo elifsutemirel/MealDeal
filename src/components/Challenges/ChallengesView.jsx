@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Trophy, Search, X } from 'lucide-react';
+import { Loader2, Trophy, Search, X, Plus, Send } from 'lucide-react';
 import { ChallengeDetailModal } from './ChallengeDetailModal';
 
 export const ChallengesView = ({ user }) => {
@@ -20,6 +20,15 @@ export const ChallengesView = ({ user }) => {
   const [joinedIds, setJoinedIds] = useState(new Set());
   const [progressMap, setProgressMap] = useState({}); // { challenge_id: { cooked_count, total } }
   const [selectedChallenge, setSelectedChallenge] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createMessage, setCreateMessage] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [challengeForm, setChallengeForm] = useState({
+    title: '',
+    description: '',
+    start_date: '',
+    end_date: '',
+  });
 
   // Fetch all challenges from DB
   const fetchChallenges = useCallback(async () => {
@@ -80,7 +89,7 @@ export const ChallengesView = ({ user }) => {
   const handleJoin = async (e, challengeId) => {
     e.stopPropagation();
     if (!user) return alert('Please sign in to join a challenge.');
-    if (user.role !== 'Home Cook') return alert('Only Home Cooks can join challenges.');
+    if (!['Home Cook', 'Verified Chef'].includes(user.role)) return alert('Only Home Cooks can join challenges.');
     if (joinedIds.has(challengeId)) return;
 
     setJoiningId(challengeId);
@@ -106,6 +115,34 @@ export const ChallengesView = ({ user }) => {
       console.error('Failed to join challenge:', err);
     } finally {
       setJoiningId(null);
+    }
+  };
+
+  const handleCreateChallenge = async (e) => {
+    e.preventDefault();
+    if (user?.role !== 'Verified Chef') {
+      setCreateMessage('Only Verified Chefs can create Kitchen Challenges.');
+      return;
+    }
+
+    setCreating(true);
+    setCreateMessage('');
+    try {
+      const res = await fetch('/api/challenges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, ...challengeForm }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Challenge could not be created.');
+      setChallengeForm({ title: '', description: '', start_date: '', end_date: '' });
+      setCreateMessage('Kitchen Challenge created.');
+      setShowCreateForm(false);
+      fetchChallenges();
+    } catch (err) {
+      setCreateMessage(err.message);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -144,10 +181,51 @@ export const ChallengesView = ({ user }) => {
     <>
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8 pb-20">
         <header className="mb-12">
-          <h1 className="text-4xl font-black text-primary mb-2">
-            Kitchen <span className="text-emerald-500 italic">Challenges</span>
-          </h1>
-          <p className="text-secondary text-lg mb-8">Complete challenges, earn badges, and become a MealDeal champion!</p>
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-4xl font-black text-primary mb-2">
+                Kitchen <span className="text-emerald-500 italic">Challenges</span>
+              </h1>
+              <p className="text-secondary text-lg">Complete challenges, earn badges, and become a MealDeal champion!</p>
+            </div>
+            {user?.role === 'Verified Chef' && (
+              <button
+                onClick={() => setShowCreateForm(prev => !prev)}
+                className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest"
+              >
+                <Plus size={16} /> Create Challenge
+              </button>
+            )}
+          </div>
+
+          {showCreateForm && user?.role === 'Verified Chef' && (
+            <form onSubmit={handleCreateChallenge} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm mb-8 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Title</label>
+                  <input required value={challengeForm.title} onChange={(e) => setChallengeForm(prev => ({ ...prev, title: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Start Date</label>
+                    <input required type="date" value={challengeForm.start_date} onChange={(e) => setChallengeForm(prev => ({ ...prev, start_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">End Date</label>
+                    <input required type="date" value={challengeForm.end_date} onChange={(e) => setChallengeForm(prev => ({ ...prev, end_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Description</label>
+                <textarea required rows={3} value={challengeForm.description} onChange={(e) => setChallengeForm(prev => ({ ...prev, description: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
+              </div>
+              <button disabled={creating} className="inline-flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest disabled:opacity-60">
+                <Send size={16} /> {creating ? 'Creating...' : 'Save Challenge'}
+              </button>
+              {createMessage && <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{createMessage}</p>}
+            </form>
+          )}
 
           <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm mb-8 space-y-6">
             {/* Filter tabs */}
@@ -197,7 +275,7 @@ export const ChallengesView = ({ user }) => {
                 : 0;
               const isJoined = joinedIds.has(challenge.challenge_id);
               const isJoining = joiningId === challenge.challenge_id;
-              const isHomeCook = user?.role === 'Home Cook';
+              const canJoinChallenge = ['Home Cook', 'Verified Chef'].includes(user?.role);
 
               return (
                 <div
@@ -282,13 +360,13 @@ export const ChallengesView = ({ user }) => {
                           }
                           handleJoin(e, challenge.challenge_id);
                         }}
-                        disabled={isJoining || isJoined || !isHomeCook}
+                        disabled={isJoining || isJoined || !canJoinChallenge}
                         className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all flex items-center gap-1.5
                           ${challenge.status !== 'active'
                             ? 'bg-tertiary text-secondary dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
                             : isJoined
                               ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-default border border-emerald-200 dark:border-emerald-800'
-                              : isHomeCook
+                              : canJoinChallenge
                                 ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
                                 : 'bg-tertiary text-secondary dark:bg-slate-800 cursor-not-allowed opacity-60'
                           }`}
@@ -300,7 +378,7 @@ export const ChallengesView = ({ user }) => {
                             ? '✅ Joined'
                             : !user
                               ? 'Sign In'
-                              : !isHomeCook
+                              : !canJoinChallenge
                                 ? 'Home Cook only'
                                 : 'Join Challenge'
                         }

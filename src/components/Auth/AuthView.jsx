@@ -3,15 +3,12 @@ import { Users } from 'lucide-react';
 
 export const AuthView = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [role, setRole] = useState('Home Cook');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
-  const [address, setAddress] = useState('');
-  const [locationName, setLocationName] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -21,10 +18,6 @@ export const AuthView = ({ onLogin }) => {
     // Validations
     if (!isLogin && (!username || !email || !password)) {
       setError('Please fill in all fields.');
-      return;
-    }
-    if (!isLogin && role === 'Local Supplier' && (!address || !locationName)) {
-      setError('Please provide address and location name for Local Supplier.');
       return;
     }
     if (!email || !password) {
@@ -57,7 +50,7 @@ export const AuthView = ({ onLogin }) => {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password, role, address, location_name: locationName }),
+          body: JSON.stringify({ username, email, password }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message + (data.detail ? ': ' + data.detail : '') || 'Registration failed.');
@@ -111,47 +104,10 @@ export const AuthView = ({ onLogin }) => {
                   className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
                 />
               </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Select Role</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
-                    <button
-                      type="button"
-                      key={r}
-                      onClick={() => setRole(r)}
-                      className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${role === r ? 'bg-emerald-50 dark:bg-emerald-900 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-tertiary dark:bg-slate-700 border-primary dark:border-slate-600 text-tertiary'}`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Role</p>
+                <p className="text-sm font-bold text-emerald-900 dark:text-emerald-100 mt-1">New public accounts are created as Home Cooks.</p>
               </div>
-              {role === 'Local Supplier' && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Address</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="123 Farm Road, Green Valley"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Location Name</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Green Valley Farms"
-                      value={locationName}
-                      onChange={(e) => setLocationName(e.target.value)}
-                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-                    />
-                  </div>
-                </>
-              )}
             </>
           )}
 
@@ -200,7 +156,7 @@ export const AuthView = ({ onLogin }) => {
 
         <p className="text-center text-xs font-bold text-tertiary mt-8">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setAddress(''); setLocationName(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
             {isLogin ? 'Register' : 'Log In'}
           </button>
         </p>
