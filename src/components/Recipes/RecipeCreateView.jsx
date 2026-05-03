@@ -4,22 +4,23 @@ import './RecipeCreateView.css';
 
 const DIFFICULTY_LEVELS = ['Easy', 'Medium', 'Hard'];
 const VISIBILITY_OPTIONS = ['public', 'private'];
+const DEFAULT_UNITS = 'kg,g,oz,cup,L,ml,tbsp,tsp,pc,pcs,adet';
+const UNIT_LABELS = {
+  kg: 'kg', g: 'g', lb: 'lb', oz: 'oz',
+  L: 'L', ml: 'ml', cup: 'cup', tbsp: 'tbsp',
+  tsp: 'tsp', pc: 'pc', pcs: 'pcs', bunch: 'bunch',
+  clove: 'clove', spear: 'spear', can: 'can', mg: 'mg', adet: 'adet'
+};
 
 // Helper to get allowed units for an ingredient
 const getUnitOptionsForIngredient = (ingredient_id, allIngredients) => {
   if (!ingredient_id) return [];
   const ingredient = allIngredients.find(a => a.ingredient_id === parseInt(ingredient_id));
-  if (!ingredient || !ingredient.allowed_units) return [];
   
-  const units = ingredient.allowed_units.split(',');
-  const unitLabels = {
-    kg: 'kg (Kilogram)', g: 'g (Gram)', lb: 'lb (Pound)', oz: 'oz (Ounce)',
-    L: 'L (Liter)', ml: 'ml (Milliliter)', cup: 'cup', tbsp: 'tbsp (Tablespoon)',
-    tsp: 'tsp (Teaspoon)', pc: 'pc (Piece)', pcs: 'pcs (Pieces)', bunch: 'bunch',
-    clove: 'clove', spear: 'spear', can: 'can', mg: 'mg (Milligram)'
-  };
+  let unitsString = ingredient?.allowed_units || DEFAULT_UNITS;
+  const units = unitsString.split(',').map(u => u.trim());
   
-  return units.map(u => ({ value: u, label: unitLabels[u] || u }));
+  return units.map(u => ({ value: u, label: UNIT_LABELS[u] || u }));
 };
 
 const emptyIngredient = { ingredient_id: '', qty: '', unit: '' };
@@ -405,7 +406,7 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                     disabled={!ing.ingredient_id}
                   >
                     <option value="">Select unit</option>
-                    {getUnitOptionsForIngredient(ing.ingredient_id, allIngredients).map(u => (
+                    {ing.ingredient_id && getUnitOptionsForIngredient(ing.ingredient_id, allIngredients).map(u => (
                       <option key={u.value} value={u.value}>{u.label}</option>
                     ))}
                   </select>

@@ -140,7 +140,7 @@ app.post('/api/auth/login', async (req, res) => {
 
 // CREATE Recipe
 app.post('/api/recipes', async (req, res) => {
-    const { creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, ingredients } = req.body;
+    const { creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, visibility, ingredients } = req.body;
 
     let client;
     try {
@@ -149,8 +149,8 @@ app.post('/api/recipes', async (req, res) => {
 
         // Insert Recipe
         const recipeResult = await client.query(`
-            INSERT INTO "Recipe" (creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO "Recipe" (creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, visibility)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING recipe_id;
         `, [
             creator_id,
@@ -161,7 +161,8 @@ app.post('/api/recipes', async (req, res) => {
             cook_time_min,
             difficulty_level,
             dietary_tag || null,
-            base_servings || 1
+            base_servings || 1,
+            visibility || 'public'
         ]);
 
         const recipeId = recipeResult.rows[0].recipe_id;
@@ -177,14 +178,14 @@ app.post('/api/recipes', async (req, res) => {
                 if (existingCheck.rows.length > 0) {
                     actualIngredientId = existingCheck.rows[0].ingredient_id;
                     
-                    // Validate unit is allowed
-                    const allowedUnits = existingCheck.rows[0].allowed_units.split(',');
-                    if (!allowedUnits.includes(ing.unit)) {
+                    // Validate unit is allowed (trim spaces)
+                    const allowedUnits = existingCheck.rows[0].allowed_units.split(',').map(u => u.trim());
+                    if (!allowedUnits.includes(ing.unit.trim())) {
                         throw new Error(`Invalid unit "${ing.unit}" for ingredient "${ingredientName}". Allowed units: ${existingCheck.rows[0].allowed_units}`);
                     }
                 } else {
-                    // Insert the external ingredient with default allowed units
-                    const newIng = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredientName, 'kg,g,pc']);
+                    // Insert the external ingredient with default allowed units (including adet)
+                    const newIng = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredientName, 'kg,g,pc,adet,L,ml,tbsp,tsp,oz,cup']);
                     actualIngredientId = newIng.rows[0].ingredient_id;
                 }
 
