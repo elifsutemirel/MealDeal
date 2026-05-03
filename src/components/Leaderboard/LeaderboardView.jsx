@@ -74,60 +74,63 @@ export const LeaderboardView = ({ user }) => {
                   return (
                     <div 
                       key={cook.user_id} 
-                      className={`p-4 flex items-center justify-between transition-colors ${
+                      className={`p-4 transition-colors ${
                         isCurrentUser ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
                     >
-                      <div className="flex items-center gap-4">
-                        {/* Rank */}
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${
-                          index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          index === 1 ? 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' :
-                          index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                          'text-slate-400 dark:text-slate-500'
-                        }`}>
-                          #{index + 1}
-                        </div>
-                        
-                        {/* User Info */}
-                        <div>
-                          <p className={`font-black flex items-center gap-2 ${
-                            isCurrentUser ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-white'
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          {/* Rank */}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${
+                            index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                            index === 1 ? 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' :
+                            index === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                            'text-slate-400 dark:text-slate-500'
                           }`}>
-                            {cook.username}
-                            {isCurrentUser && <span className="text-[9px] uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">You</span>}
+                            #{index + 1}
+                          </div>
+                          
+                          {/* User Info */}
+                          <div>
+                            <p className={`font-black flex items-center gap-2 ${
+                              isCurrentUser ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-white'
+                            }`}>
+                              {cook.username}
+                              {isCurrentUser && <span className="text-[9px] uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">You</span>}
+                            </p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                              {cook.meal_coins} MealCoins
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Stats */}
+                        <div className="text-right">
+                          <p className="text-lg font-black text-slate-900 dark:text-white">
+                            {cook.cooked_count}
                           </p>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                            {cook.meal_coins} MealCoins
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Recipes Cooked
                           </p>
+                          {parseInt(cook.challenges_won) > 0 && (
+                            <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest mt-0.5">
+                              🏆 {cook.challenges_won} Challenge{parseInt(cook.challenges_won) > 1 ? 's' : ''} Won
+                            </p>
+                          )}
                         </div>
                       </div>
-
-                      {/* Stats */}
-                      <div className="text-right">
-                        <p className="text-lg font-black text-slate-900 dark:text-white">
-                          {cook.cooked_count}
-                        </p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                          Recipes Cooked
-                        </p>
-                        {parseInt(cook.challenges_won) > 0 && (
-                          <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest mt-0.5">
-                            🏆 {cook.challenges_won} Challenge{cook.challenges_won > 1 ? 's' : ''} Won
-                          </p>
-                        )}
-                      </div>
+                      
+                      {/* Won challenge badges */}
+                      {Array.isArray(cook.won_challenges) && cook.won_challenges.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {cook.won_challenges.map((title, i) => (
+                            <span key={i} className="text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                              🏆 {title}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    {/* Won challenge badges */}
-                    {Array.isArray(cook.won_challenges) && cook.won_challenges.length > 0 && (
-                      <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-                        {cook.won_challenges.map((title, i) => (
-                          <span key={i} className="text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                            🏆 {title}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   );
                 })
               )}
