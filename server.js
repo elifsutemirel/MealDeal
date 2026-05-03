@@ -1238,6 +1238,9 @@ app.get('/api/challenges', async (req, res) => {
                 kc.description,
                 kc.start_date,
                 kc.end_date,
+                kc.creator_id,
+                kc.winner_id,
+                u_winner.username AS winner_name,
                 COUNT(DISTINCT hcc.user_id)       AS participants,
                 COUNT(DISTINCT kcr.recipe_id)     AS recipe_count,
                 CASE
@@ -1248,7 +1251,8 @@ app.get('/api/challenges', async (req, res) => {
             FROM "KitchenChallenge" kc
             LEFT JOIN "HomeCook_Challenge"      hcc ON hcc.challenge_id = kc.challenge_id
             LEFT JOIN "KitchenChallenge_Recipe" kcr ON kcr.challenge_id = kc.challenge_id
-            GROUP BY kc.challenge_id
+            LEFT JOIN "User" u_winner ON u_winner.user_id = kc.winner_id
+            GROUP BY kc.challenge_id, u_winner.username
             ORDER BY kc.start_date DESC;
         `);
 
@@ -1602,21 +1606,48 @@ app.get('/api/challenges/:id/submissions', async (req, res) => {
 });
 
 // POST /api/challenges/submissions/:id/review — review submission (approve/reject)
+// Only the challenge creator (Verified Chef who created that specific challenge) can review.
 app.post('/api/challenges/submissions/:id/review', async (req, res) => {
     const submissionId = req.params.id;
-    const { status, reviewNote } = req.body;
+    const { status, reviewNote, reviewedBy } = req.body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
         return res.status(400).json({ message: 'Invalid status' });
     }
 
+    if (!reviewedBy) {
+        return res.status(400).json({ message: 'reviewedBy (chef user_id) is required.' });
+    }
+
     try {
+        // Fetch submission to get challenge_id
+        const subRes = await pool.query(
+            'SELECT challenge_id FROM "ChallengeSubmission" WHERE submission_id = $1',
+            [submissionId]
+        );
+        if (subRes.rows.length === 0) {
+            return res.status(404).json({ message: 'Submission not found.' });
+        }
+        const { challenge_id } = subRes.rows[0];
+
+        // Verify the reviewer is the creator of this specific challenge
+        const challengeRes = await pool.query(
+            'SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+            [challenge_id]
+        );
+        if (challengeRes.rows.length === 0) {
+            return res.status(404).json({ message: 'Challenge not found.' });
+        }
+        if (parseInt(challengeRes.rows[0].creator_id) !== parseInt(reviewedBy)) {
+            return res.status(403).json({ message: 'Only the challenge creator can review submissions.' });
+        }
+
         // Update submission status
         await pool.query(
             `UPDATE "ChallengeSubmission" 
-             SET status = $1, review_note = $2, reviewed_at = CURRENT_TIMESTAMP
-             WHERE submission_id = $3`,
-            [status, reviewNote || null, submissionId]
+             SET status = $1, review_note = $2, reviewed_by = $3, reviewed_at = CURRENT_TIMESTAMP
+             WHERE submission_id = $4`,
+            [status, reviewNote || null, reviewedBy, submissionId]
         );
 
         // If approved, check if this user completed all recipes
@@ -1653,18 +1684,26 @@ app.post('/api/challenges/submissions/:id/review', async (req, res) => {
                     );
 
                     if (challenge.rows.length > 0 && !challenge.rows[0].winner_id) {
-                        // This user is the first to complete - set as winner
-                        await pool.query(
-                            'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
-                            [user_id, challenge_id]
-                        );
+                            // This user is the first to complete - set as winner
+                            await pool.query(
+                                'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
+                                [user_id, challenge_id]
+                            );
 
-                        // Add reward
-                        await pool.query(
-                            'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3)',
-                            [challenge_id, user_id, 100]
-                        );
-                    }
+                            // Award 100 reward points
+                            await pool.query(
+                                'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3) ON CONFLICT (challenge_id, user_id) DO NOTHING',
+                                [challenge_id, user_id, 100]
+                            );
+
+                            // Award 50 MealCoins to winner
+                            await pool.query(
+                                'UPDATE "User" SET total = total + 50 WHERE user_id = $1',
+                                [user_id]
+                            );
+
+                            console.log(`🏆 Challenge ${challenge_id} won by user ${user_id}!`);
+                        }
                 }
             }
         }
@@ -1714,7 +1753,7 @@ app.post('/api/client-error', (req, res) => {
 // LEADERBOARDS & ACHIEVEMENTS ENDPOINTS
 // =============================================================
 
-// GET /api/leaderboard/global — Top Home Cooks by recipes cooked
+// GET /api/leaderboard/global — Top Home Cooks by challenges won, then recipes cooked
 app.get('/api/leaderboard/global', async (req, res) => {
     try {
         const query = `
@@ -1722,17 +1761,30 @@ app.get('/api/leaderboard/global', async (req, res) => {
                 u.user_id, 
                 u.username, 
                 u.total AS meal_coins,
-                COUNT(DISTINCT c.comment_id) AS cooked_count,
+                -- cooked_count = distinct recipes cooked via comments OR approved in challenges
+                (
+                    SELECT COUNT(DISTINCT recipe_id) FROM (
+                        SELECT c2.recipe_id
+                        FROM "Comment" c2
+                        WHERE c2.user_id = u.user_id AND c2.cooked_at IS NOT NULL AND c2.recipe_id IS NOT NULL
+                        UNION
+                        SELECT cs.recipe_id
+                        FROM "ChallengeSubmission" cs
+                        WHERE cs.user_id = u.user_id AND cs.status = 'approved'
+                    ) cooked_recipes
+                ) AS cooked_count,
                 COUNT(DISTINCT kc.challenge_id) AS challenges_won,
+                COALESCE(SUM(DISTINCT cr.reward_points), 0) AS total_reward_points,
                 COALESCE(
                     json_agg(
-                        DISTINCT kc.title
+                        DISTINCT jsonb_build_object('title', kc.title, 'won_at', cr.awarded_at)
                     ) FILTER (WHERE kc.challenge_id IS NOT NULL),
                     '[]'::json
                 ) AS won_challenges
-            FROM "User" u
-            LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
+            FROM "HomeCook" hc
+            JOIN "User" u ON u.user_id = hc.user_id
             LEFT JOIN "KitchenChallenge" kc ON kc.winner_id = u.user_id
+            LEFT JOIN "ChallengeReward" cr ON cr.user_id = u.user_id AND cr.challenge_id = kc.challenge_id
             GROUP BY u.user_id, u.username, u.total
             ORDER BY challenges_won DESC, cooked_count DESC, meal_coins DESC;
         `;
@@ -1748,9 +1800,15 @@ app.get('/api/leaderboard/global', async (req, res) => {
 app.get('/api/users/:id/achievements', async (req, res) => {
     const userId = req.params.id;
     try {
-        // 1. Get total cooked recipes
+        // 1. Get total distinct cooked recipes (via comments OR approved challenge submissions)
         const cookedResult = await pool.query(
-            `SELECT COUNT(*) as cooked_count FROM "Comment" WHERE user_id = $1 AND cooked_at IS NOT NULL`,
+            `SELECT COUNT(DISTINCT recipe_id) AS cooked_count FROM (
+                SELECT recipe_id FROM "Comment"
+                WHERE user_id = $1 AND cooked_at IS NOT NULL AND recipe_id IS NOT NULL
+                UNION
+                SELECT recipe_id FROM "ChallengeSubmission"
+                WHERE user_id = $1 AND status = 'approved'
+            ) cooked_recipes`,
             [userId]
         );
         const cookedCount = parseInt(cookedResult.rows[0].cooked_count) || 0;
@@ -1762,11 +1820,18 @@ app.get('/api/users/:id/achievements', async (req, res) => {
         );
         const joinedCount = parseInt(joinedResult.rows[0].joined_count) || 0;
 
-        // 3. Get user details (MealCoins)
+        // 3. Get challenges won
+        const wonResult = await pool.query(
+            `SELECT COUNT(*) as won_count FROM "KitchenChallenge" WHERE winner_id = $1`,
+            [userId]
+        );
+        const wonCount = parseInt(wonResult.rows[0].won_count) || 0;
+
+        // 4. Get user details (MealCoins)
         const userResult = await pool.query(`SELECT total FROM "User" WHERE user_id = $1`, [userId]);
         const mealCoins = userResult.rows.length > 0 ? parseFloat(userResult.rows[0].total) : 0;
 
-        // 4. Calculate Badges dynamically
+        // 5. Calculate Badges dynamically
         const badges = [];
 
         // Cooking Badges
@@ -1779,21 +1844,44 @@ app.get('/api/users/:id/achievements', async (req, res) => {
         if (joinedCount >= 1) badges.push({ id: 'challenger', name: 'Challenger', icon: '⚔️', description: 'Joined your first kitchen challenge.', color: 'blue' });
         if (joinedCount >= 5) badges.push({ id: 'challenge_veteran', name: 'Challenge Veteran', icon: '🛡️', description: 'Joined 5 kitchen challenges.', color: 'indigo' });
 
+        // Challenge Win Badges
+        if (wonCount >= 1) badges.push({ id: 'champion', name: 'Challenge Champion', icon: '🏆', description: 'Won your first kitchen challenge!', color: 'yellow' });
+        if (wonCount >= 3) badges.push({ id: 'serial_winner', name: 'Serial Winner', icon: '🥇', description: 'Won 3 kitchen challenges.', color: 'amber' });
+
         // MealCoin Badges
         if (mealCoins >= 50) badges.push({ id: 'deal_hunter', name: 'Deal Hunter', icon: '💎', description: 'Earned 50 MealCoins.', color: 'teal' });
         if (mealCoins >= 200) badges.push({ id: 'meal_mogul', name: 'Meal Mogul', icon: '🏦', description: 'Accumulated 200 MealCoins.', color: 'yellow' });
 
         res.json({
-            stats: {
-                cookedCount,
-                joinedCount,
-                mealCoins
-            },
+            stats: { cookedCount, joinedCount, wonCount, mealCoins },
             badges
         });
     } catch (error) {
         console.error('ACHIEVEMENTS ERROR:', error);
         res.status(500).json({ message: 'Error fetching achievements.', detail: error.message });
+    }
+});
+
+// GET /api/users/:id/rewards — Get reward log for a user
+app.get('/api/users/:id/rewards', async (req, res) => {
+    const userId = req.params.id;
+    try {
+        const result = await pool.query(`
+            SELECT
+                cr.reward_id,
+                cr.reward_points,
+                cr.awarded_at,
+                kc.title    AS challenge_title,
+                kc.challenge_id
+            FROM "ChallengeReward" cr
+            JOIN "KitchenChallenge" kc ON kc.challenge_id = cr.challenge_id
+            WHERE cr.user_id = $1
+            ORDER BY cr.awarded_at DESC
+        `, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('REWARDS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching rewards.', detail: error.message });
     }
 });
 

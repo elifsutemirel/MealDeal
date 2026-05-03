@@ -72,8 +72,8 @@ export const LeaderboardView = ({ user }) => {
                   const isCurrentUser = user && user.id === cook.user_id;
                   
                   return (
+                    <React.Fragment key={cook.user_id}>
                     <div 
-                      key={cook.user_id} 
                       className={`p-4 flex items-center justify-between transition-colors ${
                         isCurrentUser ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
@@ -113,7 +113,12 @@ export const LeaderboardView = ({ user }) => {
                         </p>
                         {parseInt(cook.challenges_won) > 0 && (
                           <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest mt-0.5">
-                            🏆 {cook.challenges_won} Challenge{cook.challenges_won > 1 ? 's' : ''} Won
+                            🏆 {cook.challenges_won} Challenge{parseInt(cook.challenges_won) > 1 ? 's' : ''} Won
+                          </p>
+                        )}
+                        {parseInt(cook.total_reward_points) > 0 && (
+                          <p className="text-[9px] font-bold text-emerald-500 tracking-widest mt-0.5">
+                            +{cook.total_reward_points} pts
                           </p>
                         )}
                       </div>
@@ -121,13 +126,18 @@ export const LeaderboardView = ({ user }) => {
                     {/* Won challenge badges */}
                     {Array.isArray(cook.won_challenges) && cook.won_challenges.length > 0 && (
                       <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-                        {cook.won_challenges.map((title, i) => (
-                          <span key={i} className="text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                            🏆 {title}
-                          </span>
-                        ))}
+                        {cook.won_challenges.map((item, i) => {
+                          const title = typeof item === 'string' ? item : item?.title;
+                          const wonAt = item?.won_at ? new Date(item.won_at).toLocaleDateString() : null;
+                          return (
+                            <span key={i} className="inline-flex items-center gap-1 text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
+                              🏆 {title}{wonAt && <span className="opacity-60">· {wonAt}</span>}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
+                    </React.Fragment>
                   );
                 })
               )}
@@ -147,7 +157,7 @@ export const LeaderboardView = ({ user }) => {
               {achievements ? (
                 <>
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-2 gap-3 mb-8">
+                  <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl">
                       <p className="text-2xl font-black text-slate-900 dark:text-white">{achievements.stats.cookedCount}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Recipes Cooked</p>
@@ -155,6 +165,10 @@ export const LeaderboardView = ({ user }) => {
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl">
                       <p className="text-2xl font-black text-slate-900 dark:text-white">{achievements.stats.joinedCount}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Challenges Joined</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800">
+                      <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{achievements.stats.wonCount ?? 0}</p>
+                      <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mt-1">🏆 Won</p>
                     </div>
                   </div>
 

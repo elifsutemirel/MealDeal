@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, Trophy, ChefHat, Utensils, CheckCircle2, Circle, Crown,
-  Loader2, Camera, Upload, Clock, AlertCircle, XCircle
+  Loader2, Camera, Upload, Clock, AlertCircle, XCircle, Eye, ThumbsUp, ThumbsDown, ClipboardList
 } from 'lucide-react';
 
 export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdate }) => {
@@ -14,7 +14,21 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
 
   // Photo submission state
   const [photoUrls, setPhotoUrls] = useState({}); // recipeId -> url string
+  const [uploadModes, setUploadModes] = useState({}); // recipeId -> 'file' | 'url'
+  const [fileData, setFileData] = useState({}); // recipeId -> { dataUrl, name }
   const [submittingRecipeId, setSubmittingRecipeId] = useState(null);
+
+  // Tab state — 'info' | 'reviews'
+  const [activeTab, setActiveTab] = useState('info');
+
+  // Chef review panel state
+  const [pendingSubmissions, setPendingSubmissions] = useState([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [reviewingId, setReviewingId] = useState(null);
+  const [reviewNotes, setReviewNotes] = useState({}); // submissionId -> note string
+
+  // Is current user the creator of this challenge?
+  const isCreator = user && challenge.creator_id && parseInt(challenge.creator_id) === parseInt(user.id);
 
   // Real-time countdown
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -24,6 +38,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
     fetchRecipes();
     if (user) fetchProgress();
     else setLoadingProgress(false);
+    if (isCreator) fetchSubmissions();
   }, [challenge.challenge_id, user]);
 
   useEffect(() => {
@@ -75,10 +90,74 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
     return progress.submissions.find(s => s.recipe_id === recipeId) || null;
   };
 
+  const fetchSubmissions = async () => {
+    setLoadingSubmissions(true);
+    try {
+      const res = await fetch(`/api/challenges/${challenge.challenge_id}/submissions`);
+      const data = await res.json();
+      setPendingSubmissions(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  const handleReview = async (submissionId, status) => {
+    const note = reviewNotes[submissionId] || '';
+    setReviewingId(submissionId);
+    try {
+      const res = await fetch(`/api/challenges/submissions/${submissionId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, reviewNote: note, reviewedBy: user.id }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Clear note for this submission
+        setReviewNotes(prev => { const n = { ...prev }; delete n[submissionId]; return n; });
+        // Refresh submissions list and challenge progress/leaderboard
+        await fetchSubmissions();
+        await fetchLeaderboard();
+        if (onProgressUpdate) onProgressUpdate(challenge.challenge_id);
+      } else {
+        alert(data.message || 'Review failed.');
+      }
+    } catch (err) {
+      console.error('Review error:', err);
+      alert('Failed to submit review.');
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
+  const handleFileChange = (recipeId, file) => {
+    if (!file) return;
+    // Validate type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (JPG, PNG, WebP, etc.)');
+      return;
+    }
+    // Max 5 MB
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File too large. Maximum size is 5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setFileData(prev => ({ ...prev, [recipeId]: { dataUrl: e.target.result, name: file.name } }));
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmitPhoto = async (recipeId) => {
-    const url = (photoUrls[recipeId] || '').trim();
-    if (!url) return alert('Please paste a photo URL first.');
-    if (!url.startsWith('http')) return alert('Please enter a valid URL starting with http.');
+    // Prefer uploaded file (base64), fall back to URL
+    const fd = fileData[recipeId];
+    const url = fd ? fd.dataUrl : (photoUrls[recipeId] || '').trim();
+    if (!url) return alert('Please choose a photo or paste an image URL first.');
+    if (!fd && !url.startsWith('http') && !url.startsWith('data:')) {
+      return alert('Please enter a valid URL starting with http.');
+    }
 
     setSubmittingRecipeId(recipeId);
     try {
@@ -91,6 +170,8 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
       const data = await res.json();
       if (res.ok) {
         setPhotoUrls(prev => ({ ...prev, [recipeId]: '' }));
+        setFileData(prev => { const n = { ...prev }; delete n[recipeId]; return n; });
+        setUploadModes(prev => { const n = { ...prev }; delete n[recipeId]; return n; });
         await fetchProgress();
         await fetchLeaderboard();
         if (onProgressUpdate) onProgressUpdate(challenge.challenge_id);
@@ -190,10 +271,43 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
           </div>
         </div>
 
+        {/* Tab switcher — only visible to challenge creator */}
+        {isCreator && (
+          <div className="flex border-b border-slate-100 dark:border-slate-800 flex-shrink-0 bg-white dark:bg-slate-900">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors ${
+                activeTab === 'info'
+                  ? 'text-emerald-600 border-b-2 border-emerald-500'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+              }`}
+            >
+              <Utensils size={12} className="inline mr-1" />
+              Challenge Info
+            </button>
+            <button
+              onClick={() => { setActiveTab('reviews'); fetchSubmissions(); }}
+              className={`flex-1 py-3 text-xs font-black uppercase tracking-wider transition-colors relative ${
+                activeTab === 'reviews'
+                  ? 'text-amber-600 border-b-2 border-amber-500'
+                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+              }`}
+            >
+              <ClipboardList size={12} className="inline mr-1" />
+              Pending Reviews
+              {pendingSubmissions.filter(s => s.status === 'pending').length > 0 && (
+                <span className="ml-1.5 bg-amber-500 text-white text-[9px] font-black rounded-full px-1.5 py-0.5">
+                  {pendingSubmissions.filter(s => s.status === 'pending').length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Scrollable content */}
         <div className="overflow-y-auto flex-1 p-6 space-y-6">
 
-          {/* Description & meta */}
+          {/* Description & meta — always visible */}
           <div>
             <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
               {challenge.description || 'Complete all recipes before the deadline!'}
@@ -226,8 +340,29 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
             </div>
           </div>
 
-          {/* Your Progress */}
-          {isHomeCook && (
+          {/* 🏆 Winner banner — shown to the winning Home Cook */}
+          {isHomeCook && challenge.winner_id && user && parseInt(challenge.winner_id) === parseInt(user.id) && (
+            <div className="relative overflow-hidden bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 rounded-[1.5rem] p-5 text-center shadow-lg">
+              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)', backgroundSize: '8px 8px' }} />
+              <p className="text-3xl mb-1">🏆</p>
+              <p className="font-black text-amber-900 text-base uppercase tracking-widest">You Won This Challenge!</p>
+              <p className="text-amber-800 text-xs font-bold mt-1">+100 Reward Points · +50 MealCoins awarded</p>
+            </div>
+          )}
+
+          {/* Reward teaser for active participants who haven't won yet */}
+          {isHomeCook && !challenge.winner_id && isActive && (
+            <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3">
+              <span className="text-xl">🥇</span>
+              <div>
+                <p className="text-xs font-black text-amber-700 dark:text-amber-400">Be the first to complete all recipes!</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-500">Winner gets <strong>+100 Reward Points</strong> &amp; <strong>+50 MealCoins</strong></p>
+              </div>
+            </div>
+          )}
+
+          {/* Your Progress — Home Cook only, info tab */}
+          {activeTab === 'info' && isHomeCook && (
             <div className="bg-slate-50 dark:bg-slate-800 rounded-[1.5rem] p-5">
               <div className="flex items-center gap-2 mb-4">
                 <ChefHat size={16} className="text-emerald-500" />
@@ -255,7 +390,8 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
             </div>
           )}
 
-          {/* Challenge Recipes */}
+          {/* Challenge Recipes — info tab only */}
+          {activeTab === 'info' && (
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Utensils size={16} className="text-slate-500" />
@@ -356,40 +492,109 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
                       )}
 
                       {/* Photo submission area */}
-                      {canSubmit && (
-                        <div className="px-4 pb-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Camera size={14} className="text-slate-400" />
-                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                              {isRejected ? 'Resubmit Photo' : 'Submit Photo Proof'}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="url"
-                              value={photoUrls[recipe.recipe_id] || ''}
-                              onChange={(e) => setPhotoUrls(prev => ({ ...prev, [recipe.recipe_id]: e.target.value }))}
-                              placeholder="Paste image URL (e.g. https://imgur.com/...)"
-                              className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                            />
+                      {canSubmit && (() => {
+                        const mode = uploadModes[recipe.recipe_id] || 'file';
+                        const fd = fileData[recipe.recipe_id];
+                        const hasContent = fd || (photoUrls[recipe.recipe_id] || '').trim();
+
+                        return (
+                          <div className="px-4 pb-4">
+                            {/* Header + mode toggle */}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Camera size={14} className="text-slate-400" />
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                  {isRejected ? 'Resubmit Photo' : 'Submit Photo Proof'}
+                                </p>
+                              </div>
+                              {/* Tab toggle */}
+                              <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5 gap-0.5">
+                                <button
+                                  onClick={() => setUploadModes(prev => ({ ...prev, [recipe.recipe_id]: 'file' }))}
+                                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase transition-all ${
+                                    mode === 'file'
+                                      ? 'bg-white dark:bg-slate-600 text-emerald-600 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                >
+                                  📁 Device
+                                </button>
+                                <button
+                                  onClick={() => setUploadModes(prev => ({ ...prev, [recipe.recipe_id]: 'url' }))}
+                                  className={`px-2 py-1 rounded-md text-[9px] font-black uppercase transition-all ${
+                                    mode === 'url'
+                                      ? 'bg-white dark:bg-slate-600 text-emerald-600 shadow-sm'
+                                      : 'text-slate-400 hover:text-slate-600'
+                                  }`}
+                                >
+                                  🔗 URL
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* File picker */}
+                            {mode === 'file' && (
+                              <div>
+                                {fd ? (
+                                  <div className="relative">
+                                    <img
+                                      src={fd.dataUrl}
+                                      alt="Preview"
+                                      className="w-full h-32 object-cover rounded-xl border-2 border-emerald-400 dark:border-emerald-600"
+                                    />
+                                    <button
+                                      onClick={() => setFileData(prev => { const n = { ...prev }; delete n[recipe.recipe_id]; return n; })}
+                                      className="absolute top-1.5 right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-black hover:bg-red-600"
+                                    >
+                                      ✕
+                                    </button>
+                                    <p className="text-[9px] text-slate-400 mt-1 truncate">{fd.name}</p>
+                                  </div>
+                                ) : (
+                                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/10 transition-all">
+                                    <Upload size={20} className="text-slate-300 dark:text-slate-600 mb-1" />
+                                    <p className="text-[10px] font-bold text-slate-400">Click to choose a photo</p>
+                                    <p className="text-[9px] text-slate-300 dark:text-slate-600">JPG, PNG, WebP · max 5 MB</p>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => handleFileChange(recipe.recipe_id, e.target.files?.[0])}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            )}
+
+                            {/* URL input */}
+                            {mode === 'url' && (
+                              <div>
+                                <input
+                                  type="url"
+                                  value={photoUrls[recipe.recipe_id] || ''}
+                                  onChange={(e) => setPhotoUrls(prev => ({ ...prev, [recipe.recipe_id]: e.target.value }))}
+                                  placeholder="Paste image URL (https://...)"
+                                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                                />
+                              </div>
+                            )}
+
+                            {/* Submit button */}
                             <button
                               onClick={() => handleSubmitPhoto(recipe.recipe_id)}
-                              disabled={isSubmitting || !photoUrls[recipe.recipe_id]?.trim()}
-                              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-black uppercase rounded-xl transition-all flex items-center gap-1.5 flex-shrink-0"
+                              disabled={isSubmitting || !hasContent}
+                              className="mt-2 w-full px-4 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white text-[10px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1.5"
                             >
                               {isSubmitting ? (
                                 <Loader2 size={12} className="animate-spin" />
                               ) : (
                                 <Upload size={12} />
                               )}
-                              {isSubmitting ? 'Uploading...' : isRejected ? 'Resubmit' : 'Upload'}
+                              {isSubmitting ? 'Uploading...' : isRejected ? 'Resubmit' : 'Submit Photo'}
                             </button>
                           </div>
-                          <p className="text-[9px] text-slate-400 mt-1.5">
-                            Host your photo on Imgur, Google Drive, or any image hosting service and paste the direct URL.
-                          </p>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Pending submission photo preview */}
                       {isPending && submission?.photo_url && (
@@ -409,6 +614,120 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
               </div>
             )}
           </div>
+          )} {/* end activeTab==='info' recipes block */}
+
+        {/* ===== CHEF REVIEW PANEL ===== */}
+        {activeTab === 'reviews' && isCreator && (
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <ClipboardList size={16} className="text-amber-500" />
+              <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-wider">Submission Reviews</h3>
+            </div>
+
+            {loadingSubmissions ? (
+              <div className="flex items-center gap-2 text-slate-400 text-xs py-6 justify-center">
+                <Loader2 size={16} className="animate-spin" /> Loading submissions...
+              </div>
+            ) : pendingSubmissions.length === 0 ? (
+              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-8 text-center">
+                <Eye size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                <p className="text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-widest">No submissions yet.</p>
+                <p className="text-slate-300 dark:text-slate-600 text-xs mt-1">Home Cooks haven't submitted any photos yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {pendingSubmissions.map((sub) => {
+                  const isReviewing = reviewingId === sub.submission_id;
+                  const statusColor = sub.status === 'approved'
+                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                    : sub.status === 'rejected'
+                    ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700';
+
+                  return (
+                    <div key={sub.submission_id} className={`rounded-2xl border overflow-hidden transition-all ${statusColor}`}>
+                      {/* Header */}
+                      <div className="flex items-center justify-between p-4">
+                        <div>
+                          <p className="text-sm font-black text-slate-800 dark:text-white">{sub.username}</p>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">{sub.recipe_title}</p>
+                        </div>
+                        <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
+                          sub.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                          : sub.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+                        }`}>
+                          {sub.status === 'approved' ? '✓ Approved' : sub.status === 'rejected' ? '✗ Rejected' : '⏳ Pending'}
+                        </span>
+                      </div>
+
+                      {/* Photo */}
+                      {sub.photo_url && (
+                        <div className="px-4 pb-3">
+                          <img
+                            src={sub.photo_url}
+                            alt={`${sub.username}'s submission`}
+                            className="w-full h-40 object-cover rounded-xl border border-slate-100 dark:border-slate-700"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                          <a
+                            href={sub.photo_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-emerald-500 hover:underline mt-1 block"
+                          >
+                            <Eye size={10} className="inline mr-1" />Open full image
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Review note input (only for pending) */}
+                      {sub.status === 'pending' && (
+                        <div className="px-4 pb-4 space-y-2">
+                          <textarea
+                            rows={2}
+                            value={reviewNotes[sub.submission_id] || ''}
+                            onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.submission_id]: e.target.value }))}
+                            placeholder="Optional note for the home cook (e.g. 'Great job!' or 'Please resubmit, photo unclear')"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleReview(sub.submission_id, 'approved')}
+                              disabled={isReviewing}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-black uppercase rounded-xl transition-all"
+                            >
+                              {isReviewing ? <Loader2 size={12} className="animate-spin" /> : <ThumbsUp size={12} />}
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleReview(sub.submission_id, 'rejected')}
+                              disabled={isReviewing}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-[10px] font-black uppercase rounded-xl transition-all"
+                            >
+                              {isReviewing ? <Loader2 size={12} className="animate-spin" /> : <ThumbsDown size={12} />}
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Already reviewed note */}
+                      {sub.status !== 'pending' && sub.review_note && (
+                        <div className="px-4 pb-3">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">📝 Your note: {sub.review_note}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'info' && (
+          <>
 
           {/* Leaderboard */}
           <div>
@@ -470,6 +789,9 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
               </div>
             )}
           </div>
+
+          </>
+        )}
         </div>
       </div>
     </div>
