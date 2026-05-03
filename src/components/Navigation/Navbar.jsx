@@ -35,6 +35,11 @@ export const Navbar = ({ user, activeTab, setTab, cartCount, onLogout, darkMode,
             Create Recipe
           </button>
         )}
+        {user && user.role === 'Verified Chef' && (
+          <button onClick={() => setTab('manage-challenges')} className={`text-sm font-bold capitalize transition-all ${activeTab === 'manage-challenges' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}>
+            Manage Challenges
+          </button>
+        )}
       </div>
     </div>
     <div className="flex items-center gap-4">

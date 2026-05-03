@@ -14,6 +14,7 @@ import { MealListView } from './components/MealLists/MealListView';
 import { RecipeCreateView } from './components/Recipes/RecipeCreateView';
 import { ProfileView } from './components/Profile/ProfileView';
 import { SupplierMarketplaceView } from './components/Marketplace/SupplierMarketplaceView';
+import { ChallengeManagementView } from './components/Dashboard/ChallengeManagementView';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
@@ -118,6 +119,7 @@ export default function App() {
 
             {currentTab === 'challenges' && <ChallengesView user={user} />}
             {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
+            {currentTab === 'manage-challenges' && user?.role === 'Verified Chef' && <ChallengeManagementView user={user} />}
             {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
             {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
             {currentTab === 'create-recipe' && (user?.role === 'Verified Chef' || user?.role === 'Home Cook') && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
