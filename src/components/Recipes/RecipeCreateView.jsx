@@ -5,10 +5,28 @@ import './RecipeCreateView.css';
 const DIFFICULTY_LEVELS = ['Easy', 'Medium', 'Hard'];
 const VISIBILITY_OPTIONS = ['public', 'private'];
 
+// Helper to get allowed units for an ingredient
+const getUnitOptionsForIngredient = (ingredient_id, allIngredients) => {
+  if (!ingredient_id) return [];
+  const ingredient = allIngredients.find(a => a.ingredient_id === parseInt(ingredient_id));
+  if (!ingredient || !ingredient.allowed_units) return [];
+  
+  const units = ingredient.allowed_units.split(',');
+  const unitLabels = {
+    kg: 'kg (Kilogram)', g: 'g (Gram)', lb: 'lb (Pound)', oz: 'oz (Ounce)',
+    L: 'L (Liter)', ml: 'ml (Milliliter)', cup: 'cup', tbsp: 'tbsp (Tablespoon)',
+    tsp: 'tsp (Teaspoon)', pc: 'pc (Piece)', pcs: 'pcs (Pieces)', bunch: 'bunch',
+    clove: 'clove', spear: 'spear', can: 'can', mg: 'mg (Milligram)'
+  };
+  
+  return units.map(u => ({ value: u, label: unitLabels[u] || u }));
+};
+
 const emptyIngredient = { ingredient_id: '', qty: '', unit: '' };
 
 export const RecipeCreateView = ({ user, onCreated }) => {
   const [title, setTitle] = useState('');
+  const [preparationSteps, setPreparationSteps] = useState('');
   const [cookTime, setCookTime] = useState(30);
   const [difficulty, setDifficulty] = useState('Easy');
   const [dietary, setDietary] = useState('');
@@ -38,6 +56,7 @@ export const RecipeCreateView = ({ user, onCreated }) => {
 
   const resetForm = () => {
     setTitle('');
+    setPreparationSteps('');
     setCookTime(30);
     setDifficulty('Easy');
     setDietary('');
@@ -115,6 +134,7 @@ export const RecipeCreateView = ({ user, onCreated }) => {
       const body = {
         creator_id: user.id,
         title,
+        preparation_steps: preparationSteps || null,
         cook_time_min: cookTime,
         difficulty_level: difficulty,
         dietary_tag: dietary,
@@ -231,6 +251,18 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                   placeholder="Creamy mushroom risotto"
                   className="recipe-field"
                 />
+              </div>
+
+              <div>
+                <label className="recipe-label">Preparation Steps</label>
+                <textarea
+                  value={preparationSteps}
+                  onChange={(e) => setPreparationSteps(e.target.value)}
+                  placeholder={"Step 1: Preheat oven to 180°C\nStep 2: Mix ingredients\nStep 3: Bake for 30 minutes"}
+                  className="recipe-field resize-none"
+                  rows={5}
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Each line will appear as a separate step.</p>
               </div>
 
               <div className="recipe-field-grid recipe-field-grid--three">
@@ -366,12 +398,17 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                     placeholder="Qty"
                     className="recipe-field"
                   />
-                  <input
+                  <select
                     value={ing.unit}
                     onChange={(e) => updateIngredient(idx, 'unit', e.target.value)}
-                    placeholder="Unit"
                     className="recipe-field"
-                  />
+                    disabled={!ing.ingredient_id}
+                  >
+                    <option value="">Select unit</option>
+                    {getUnitOptionsForIngredient(ing.ingredient_id, allIngredients).map(u => (
+                      <option key={u.value} value={u.value}>{u.label}</option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     onClick={() => removeIngredient(idx)}

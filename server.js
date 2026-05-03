@@ -171,13 +171,20 @@ app.post('/api/recipes', async (req, res) => {
             for (const ing of ingredients) {
                 let actualIngredientId = ing.ingredient_id;
 
-                // Ensure ingredient exists in local DB
-                const existingCheck = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name = $1', [ing.name]);
+                // Ensure ingredient exists in local DB (case-insensitive)
+                const ingredientName = (ing.name || '').trim();
+                const existingCheck = await client.query('SELECT ingredient_id, allowed_units FROM "Ingredient" WHERE name ILIKE $1', [ingredientName]);
                 if (existingCheck.rows.length > 0) {
                     actualIngredientId = existingCheck.rows[0].ingredient_id;
+                    
+                    // Validate unit is allowed
+                    const allowedUnits = existingCheck.rows[0].allowed_units.split(',');
+                    if (!allowedUnits.includes(ing.unit)) {
+                        throw new Error(`Invalid unit "${ing.unit}" for ingredient "${ingredientName}". Allowed units: ${existingCheck.rows[0].allowed_units}`);
+                    }
                 } else {
-                    // Insert the external ingredient
-                    const newIng = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ing.name]);
+                    // Insert the external ingredient with default allowed units
+                    const newIng = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredientName, 'kg,g,pc']);
                     actualIngredientId = newIng.rows[0].ingredient_id;
                 }
 
@@ -489,6 +496,41 @@ app.get('/api/ingredients/search', async (req, res) => {
     }
 });
 
+// GET /api/ingredients/suppliers - Find suppliers for a specific ingredient by name
+app.get('/api/ingredients/suppliers', async (req, res) => {
+    const ingredientName = req.query.name;
+    if (!ingredientName) {
+        return res.status(400).json({ message: 'Ingredient name is required' });
+    }
+
+    try {
+        const query = `
+            SELECT 
+                si.inventory_id,
+                ls.user_id AS supplier_id,
+                u.username AS supplier_name,
+                ls.location_name,
+                i.ingredient_id,
+                i.name AS ingredient_name,
+                si.unit,
+                si.price,
+                si.package_size,
+                si.available_qty
+            FROM "SupplierInventory" si
+            JOIN "Ingredient" i ON i.ingredient_id = si.ingredient_id
+            JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+            JOIN "User" u ON u.user_id = ls.user_id
+            WHERE i.name ILIKE $1 AND si.available_qty > 0
+            ORDER BY si.price ASC;
+        `;
+        const result = await pool.query(query, [ingredientName]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('INGREDIENT SUPPLIERS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching ingredient suppliers.' });
+    }
+});
+
 // GET Supplier Marketplace (All suppliers and their inventory)
 app.get('/api/marketplace', async (req, res) => {
     try {
@@ -557,15 +599,29 @@ app.post('/api/supplier/inventory', async (req, res) => {
         await client.query('BEGIN');
 
         // Check if ingredient exists
-        let ingRes = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name ILIKE $1', [ingredient_name.trim()]);
+        let ingRes = await client.query('SELECT ingredient_id, allowed_units FROM "Ingredient" WHERE name ILIKE $1', [ingredient_name.trim()]);
         let ingredientId;
+        let allowedUnits;
 
         if (ingRes.rows.length > 0) {
             ingredientId = ingRes.rows[0].ingredient_id;
+            allowedUnits = ingRes.rows[0].allowed_units;
+            console.log(`FOUND EXISTING INGREDIENT: "${ingredient_name.trim()}" with ID ${ingredientId}, allowed units: ${allowedUnits}`);
+            
+            // Validate unit
+            const allowedUnitsArray = allowedUnits.split(',');
+            if (!allowedUnitsArray.includes(unit)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ 
+                    message: `Invalid unit "${unit}" for ingredient "${ingredient_name.trim()}". Allowed units: ${allowedUnits}`,
+                    allowedUnits: allowedUnitsArray
+                });
+            }
         } else {
-            // Create new ingredient
-            let newIngRes = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ingredient_name.trim()]);
+            // Create new ingredient with default allowed units
+            let newIngRes = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredient_name.trim(), 'kg,g,pc']);
             ingredientId = newIngRes.rows[0].ingredient_id;
+            console.log(`CREATED NEW INGREDIENT: "${ingredient_name.trim()}" with ID ${ingredientId}`);
         }
 
         // Insert into SupplierInventory
@@ -575,6 +631,7 @@ app.post('/api/supplier/inventory', async (req, res) => {
             RETURNING *;
         `;
         const result = await client.query(query, [supplier_id, ingredientId, unit, price, package_size, available_qty]);
+        console.log(`ADDED INVENTORY: Supplier ${supplier_id}, Ingredient ${ingredientId} (${ingredient_name.trim()}), Qty: ${available_qty}`);
 
         await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
@@ -722,6 +779,8 @@ app.get('/api/recipes', async (req, res) => {
             SELECT
                 r.recipe_id AS id,
                 r.title,
+                r.description,
+                r.preparation_steps,
                 u.username AS chef,
                 r.dietary_tag AS category,
                 r.cook_time_min AS time,
@@ -734,9 +793,9 @@ app.get('/api/recipes', async (req, res) => {
                         'name', i.name,
                         'baseQty', ri.qty,
                         'unit', ri.unit,
-                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                                                'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id AND available_qty > 0), 0.10),
                         'status', CASE 
-                                    WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
+                                                                        WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id AND available_qty > 0), 0) > 0 THEN 'available'
                                     ELSE 'missing' 
                                   END,
                         'suppliers', (
@@ -751,7 +810,8 @@ app.get('/api/recipes', async (req, res) => {
                             FROM "SupplierInventory" si
                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                             JOIN "User" su ON su.user_id = ls.user_id
-                            WHERE si.ingredient_id = i.ingredient_id
+                                                        WHERE si.ingredient_id = i.ingredient_id
+                                                            AND si.available_qty > 0
                         )
                     )), '[]'::json)
                     FROM "Recipe_Ingredient" ri
@@ -780,14 +840,18 @@ app.get('/api/recipes', async (req, res) => {
         const recipes = result.rows.map((row, index) => ({
             id: row.id,
             title: row.title,
+            description: row.description,
             chef: row.chef,
             rating: parseFloat(row.rating),
             time: row.time,
             difficulty: row.difficulty,
             category: row.category,
+            base_servings: row.base_servings,
             image: MOCK_IMAGES[index % MOCK_IMAGES.length],
             ingredients: row.ingredients,
-            steps: ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
+            steps: row.preparation_steps
+                ? row.preparation_steps.split('\n').map(s => s.trim()).filter(Boolean)
+                : ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
             substitutions: [],
             reviews: []
         }));
@@ -822,6 +886,57 @@ app.get('/api/recipes', async (req, res) => {
     } catch (error) {
         console.error('RECIPES API ERROR:', error);
         res.status(500).json({ message: 'Error fetching recipes.', detail: error.message });
+    }
+});
+
+// GET /api/recipes/:id/inventory — live ingredient supplier availability for recipe detail screen
+app.get('/api/recipes/:id/inventory', async (req, res) => {
+    const recipeId = req.params.id;
+    console.log(`FETCHING INVENTORY FOR RECIPE ${recipeId}`);
+    try {
+        const recipeExists = await pool.query('SELECT recipe_id FROM "Recipe" WHERE recipe_id = $1 LIMIT 1', [recipeId]);
+        if (recipeExists.rows.length === 0) {
+            return res.status(404).json({ message: 'Recipe not found.' });
+        }
+
+        const query = `
+            SELECT COALESCE(json_agg(json_build_object(
+                'id', i.ingredient_id,
+                'name', i.name,
+                'baseQty', ri.qty,
+                'unit', ri.unit,
+                'pricePerUnit', COALESCE((
+                    SELECT MIN(si_min.price)
+                    FROM "SupplierInventory" si_min
+                    WHERE si_min.ingredient_id = i.ingredient_id AND si_min.available_qty > 0
+                ), 0.10),
+                'suppliers', COALESCE((
+                    SELECT json_agg(json_build_object(
+                        'inventory_id', si.inventory_id,
+                        'supplier_id', su.user_id,
+                        'supplier_name', su.username,
+                        'location_name', ls.location_name,
+                        'price', si.price,
+                        'available_qty', si.available_qty
+                    ) ORDER BY si.price ASC)
+                    FROM "SupplierInventory" si
+                    JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                    JOIN "User" su ON su.user_id = ls.user_id
+                    WHERE si.ingredient_id = i.ingredient_id
+                      AND si.available_qty > 0
+                ), '[]'::json)
+            )), '[]'::json) AS ingredients
+            FROM "Recipe_Ingredient" ri
+            JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
+            WHERE ri.recipe_id = $1;
+        `;
+
+        const result = await pool.query(query, [recipeId]);
+        console.log(`RECIPE ${recipeId} INVENTORY:`, JSON.stringify(result.rows[0]?.ingredients, null, 2));
+        res.json({ recipe_id: Number(recipeId), ingredients: result.rows[0]?.ingredients || [] });
+    } catch (error) {
+        console.error('RECIPE INVENTORY API ERROR:', error);
+        res.status(500).json({ message: 'Error fetching recipe inventory.', detail: error.message });
     }
 });
 
@@ -997,23 +1112,6 @@ app.post('/api/checkout', async (req, res) => {
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
-        // 2. Deduct Supplier Inventory
-        if (items && items.length > 0) {
-            for (const item of items) {
-                const scaleFactor = item.recipe.isIngredientOnly ? item.servings : item.servings / 2;
-                const ingredients = item.recipe.cartIngredients || [];
-                for (const ing of ingredients) {
-                    if (ing.selectedSupplier && ing.selectedSupplier.inventory_id) {
-                        const deduction = ing.baseQty * scaleFactor;
-                        await client.query(
-                            'UPDATE "SupplierInventory" SET available_qty = GREATEST(0, available_qty - $1) WHERE inventory_id = $2',
-                            [deduction, ing.selectedSupplier.inventory_id]
-                        );
-                        console.log(`[Checkout] Deducted ${deduction} from inventory ${ing.selectedSupplier.inventory_id}`);
-                    }
-                }
-            }
-        }
         // 2. Create Cart
         const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
         const cartId = cartRes.rows[0].cart_id;
@@ -1024,7 +1122,12 @@ app.post('/api/checkout', async (req, res) => {
             
             for (const cartEntry of items) {
                 const ingredients = cartEntry.recipe.cartIngredients || [];
-                const servingsFactor = Number(cartEntry.servings || 2) / 2;
+                // For direct marketplace items (isIngredientOnly), baseQty=1 and servings=qty bought.
+                // For recipe items, scale by servings / base_servings.
+                const isIngredientOnly = !!cartEntry.recipe.isIngredientOnly;
+                const servingsFactor = isIngredientOnly
+                    ? Number(cartEntry.servings || 1)
+                    : Number(cartEntry.servings || 2) / Number(cartEntry.recipe.base_servings || 2);
 
                 for (const ing of ingredients) {
                     const rawId = ing.id;

@@ -8,20 +8,30 @@ export const SupplierMarketplaceView = ({ user, onAddToCart }) => {
   const [quantities, setQuantities] = useState({});
 
   useEffect(() => {
-    const fetchMarketplace = async () => {
+    let isMounted = true;
+
+    const fetchMarketplace = async (showLoader = false) => {
+      if (showLoader) setLoading(true);
       try {
         const res = await fetch('/api/marketplace');
         if (res.ok) {
           const data = await res.json();
-          setSuppliers(data);
+          if (isMounted) setSuppliers(data);
         }
       } catch (err) {
         console.error("Failed to fetch marketplace", err);
       } finally {
-        setLoading(false);
+        if (showLoader && isMounted) setLoading(false);
       }
     };
-    fetchMarketplace();
+
+    fetchMarketplace(true);
+    const intervalId = setInterval(() => fetchMarketplace(false), 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleQtyChange = (inventoryId, delta, max) => {

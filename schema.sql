@@ -77,6 +77,7 @@ CREATE TABLE "HomeCook" (
 CREATE TABLE "Ingredient" (
     ingredient_id       SERIAL          PRIMARY KEY,
     name                VARCHAR(100)    NOT NULL,
+    allowed_units       TEXT            NOT NULL DEFAULT 'kg,g,pc',
     parent_ingredient_id INT             REFERENCES "Ingredient"(ingredient_id) ON DELETE SET NULL
 );
 

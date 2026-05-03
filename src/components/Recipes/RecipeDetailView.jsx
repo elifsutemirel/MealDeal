@@ -1,27 +1,40 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send } from 'lucide-react';
 import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
 
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
+  const mapIngredientsWithSelection = (nextIngredients, previousIngredients = []) => {
+    const previousById = new Map(previousIngredients.map(i => [i.id?.toString(), i]));
+
+    return (nextIngredients || []).map(i => {
+      const normalizedSuppliers = (i.suppliers || []).map((s, idx) =>
+        typeof s === 'object' ? s : { id: `mock-${idx}`, location_name: s, price: i.pricePerUnit || 0 }
+      );
+      const sortedSuppliers = [...normalizedSuppliers].sort((a, b) => (a.price || 0) - (b.price || 0));
+
+      const existing = previousById.get(i.id?.toString());
+      const existingSelectedInventoryId = existing?.selectedInventoryId != null ? existing.selectedInventoryId.toString() : null;
+      const hasExistingSupplier = existingSelectedInventoryId && sortedSuppliers.some(s => (s.inventory_id || s.id)?.toString() === existingSelectedInventoryId);
+      const fallbackSupplier = sortedSuppliers[0];
+
+      return {
+        ...i,
+        suppliers: normalizedSuppliers,
+        selected: existing?.selected ?? true,
+        selectedInventoryId: hasExistingSupplier
+          ? existingSelectedInventoryId
+          : (fallbackSupplier?.inventory_id || fallbackSupplier?.id || null),
+        currentPrice: hasExistingSupplier
+          ? (existing?.currentPrice ?? fallbackSupplier?.price ?? i.pricePerUnit ?? 0)
+          : (fallbackSupplier?.price ?? i.pricePerUnit ?? 0)
+      };
+    });
+  };
+
   const [servings, setServings] = useState(2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
   const [ingredientsState, setIngredientsState] = useState(
-    recipe.ingredients.map(i => {
-      // Normalize suppliers: convert strings to objects with synthetic IDs
-      const normalizedSuppliers = (i.suppliers || []).map((s, idx) => 
-        typeof s === 'object' ? s : { id: `mock-${idx}`, location_name: s, price: i.pricePerUnit || 0 }
-      );
-      // Find cheapest supplier as default
-      const sortedSuppliers = [...normalizedSuppliers].sort((a, b) => (a.price || 0) - (b.price || 0));
-      
-      return { 
-        ...i, 
-        suppliers: normalizedSuppliers,
-        selected: true, 
-        selectedInventoryId: sortedSuppliers[0]?.inventory_id || sortedSuppliers[0]?.id || null,
-        currentPrice: sortedSuppliers[0]?.price || i.pricePerUnit // Use db price if available
-      };
-    })
+    mapIngredientsWithSelection(recipe.ingredients)
   );
 
   // AI substitution state
@@ -45,6 +58,38 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const [reviewSuccess, setReviewSuccess] = useState(false);
 
   const canReview = user && (user.role === 'Home Cook' || user.role === 'Verified Chef');
+
+  useEffect(() => {
+    setIngredientsState(mapIngredientsWithSelection(recipe.ingredients));
+  }, [recipe.id, recipe.ingredients]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncInventory = async () => {
+      try {
+        const res = await fetch(`/api/recipes/${recipe.id}/inventory`);
+        if (!res.ok) return;
+        const data = await res.json();
+        console.log(`[RecipeDetail] Received inventory for recipe ${recipe.id}:`, data);
+        if (!isMounted || !Array.isArray(data.ingredients)) return;
+
+        const updatedIngredients = mapIngredientsWithSelection(data.ingredients, prev);
+        console.log(`[RecipeDetail] Updated ingredients state:`, updatedIngredients);
+        setIngredientsState(updatedIngredients);
+      } catch (err) {
+        console.error('Failed to sync recipe inventory:', err);
+      }
+    };
+
+    syncInventory();
+    const intervalId = setInterval(syncInventory, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [recipe.id]);
 
   const handleSubmitReview = async () => {
     if (!reviewText.trim() || reviewRating === 0) return;
@@ -78,7 +123,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   };
 
   // Recalculate quantities and price based on servings and selection
-  const scaleFactor = servings / 2;
+  const scaleFactor = servings / (recipe.base_servings || 2);
 
   const selectedTotal = useMemo(() => {
     return ingredientsState
@@ -86,11 +131,13 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
       .reduce((total, i) => total + (i.currentPrice * (i.baseQty * scaleFactor)), 0);
   }, [ingredientsState, scaleFactor]);
 
+  const missingIngredientsCount = useMemo(() => {
+    return ingredientsState.filter(i => i.selected && (!i.suppliers || i.suppliers.length === 0)).length;
+  }, [ingredientsState]);
+
   const handleToggleIngredient = (id) => {
     setIngredientsState(prev => prev.map(i => i.id === id ? { ...i, selected: !i.selected } : i));
   };
-
-
 
   const handleRequestAI = (ingredient) => {
     setAiTargetIngredient(ingredient);
@@ -103,9 +150,12 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     setAiLoading(true);
     try {
       const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
-      const prompt = `I need a substitute for ${aiTargetIngredient.name} (Taxonomy Category: ${aiTargetIngredient.taxonomy}). My specific request or constraint is: "${aiPrompt}". Currently, the original ingredient costs $${aiTargetIngredient.pricePerUnit.toFixed(2)} per unit. Give me a creative and practical alternative.`;
+      const pricePerUnit = Number(aiTargetIngredient.pricePerUnit) || Number(aiTargetIngredient.currentPrice) || 0;
+      const prompt = `I need a substitute for ${aiTargetIngredient.name}. My specific request or constraint is: "${aiPrompt}". Currently, the original ingredient costs $${pricePerUnit.toFixed(2)} per unit. Give me a creative and practical alternative.`;
 
+      console.log('[AI] Requesting substitution for:', aiTargetIngredient.name, 'with prompt:', aiPrompt);
       const result = await fetchGeminiWithBackoff(prompt, systemPrompt);
+      console.log('[AI] Received result:', result);
 
       setAiResult({
         targetId: aiTargetIngredient.id,
@@ -121,31 +171,82 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         targetId: aiTargetIngredient.id,
         original: aiTargetIngredient.name,
         suggestion: "Standard Pantry Substitute",
-        suggestedPrice: aiTargetIngredient.pricePerUnit,
-        reason: "The AI service is currently unavailable. We recommend using a standard generic substitute for now."
+        suggestedPrice: Number(aiTargetIngredient.pricePerUnit) || Number(aiTargetIngredient.currentPrice) || 0,
+        reason: error.message || "The AI service is currently unavailable. We recommend using a standard generic substitute for now."
       });
     } finally {
       setAiLoading(false);
     }
   };
 
-  const handleApplySubstitution = () => {
-    setIngredientsState(prev => prev.map(i => {
-      if (i.id === aiResult.targetId) {
-        return {
-          ...i,
-          name: aiResult.suggestion,
-          suppliers: ['AI Standard Pantry'],
-          pricePerUnit: aiResult.suggestedPrice / i.baseQty // Estimate new unit price
-        };
-      }
-      return i;
-    }));
+  const handleApplySubstitution = async () => {
+    console.log('[AI] Applying substitution:', aiResult.suggestion);
+    
+    // Fetch actual suppliers for the substituted ingredient
+    try {
+      const response = await fetch(`/api/ingredients/suppliers?name=${encodeURIComponent(aiResult.suggestion)}`);
+      const suppliers = await response.json();
+      console.log('[AI] Found suppliers for substitution:', suppliers);
+
+      setIngredientsState(prev => prev.map(i => {
+        if (i.id === aiResult.targetId) {
+          if (suppliers && suppliers.length > 0) {
+            // Found suppliers - use real supplier data
+            const supplierData = suppliers.map(s => ({
+              supplierId: s.supplier_id,
+              supplierName: s.supplier_name,
+              locationName: s.location_name,
+              price: parseFloat(s.price),
+              unit: s.unit,
+              availableQty: parseFloat(s.available_qty),
+              inventoryId: s.inventory_id
+            }));
+
+            // Select cheapest supplier by default
+            const cheapest = supplierData.reduce((min, s) => s.price < min.price ? s : min);
+
+            return {
+              ...i,
+              name: aiResult.suggestion,
+              suppliers: supplierData,
+              supplierId: cheapest.supplierId,
+              currentPrice: (cheapest.price * i.baseQty).toFixed(2),
+              pricePerUnit: cheapest.price,
+              unit: cheapest.unit
+            };
+          } else {
+            // No suppliers found - show as unavailable
+            return {
+              ...i,
+              name: aiResult.suggestion,
+              suppliers: [],
+              supplierId: null,
+              currentPrice: 0,
+              pricePerUnit: aiResult.suggestedPrice
+            };
+          }
+        }
+        return i;
+      }));
+    } catch (error) {
+      console.error('[AI] Error fetching suppliers for substitution:', error);
+      // Fallback to estimated pricing if API fails
+      setIngredientsState(prev => prev.map(i => {
+        if (i.id === aiResult.targetId) {
+          return {
+            ...i,
+            name: aiResult.suggestion,
+            suppliers: [],
+            pricePerUnit: aiResult.suggestedPrice
+          };
+        }
+        return i;
+      }));
+    }
+
     setAiTargetIngredient(null);
     setAiResult(null);
   };
-
-  const missingIngredientsCount = ingredientsState.filter(i => !i.suppliers || i.suppliers.length === 0).length;
 
   const handleOpenMealListModal = async () => {
     if (!user) {
@@ -258,13 +359,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                         {user && ing.suppliers && ing.suppliers.length > 0 && (
                           <div className="mt-2 w-full flex flex-wrap justify-end gap-1.5">
                             {ing.suppliers.map((sup) => {
-                              const isSelected = (ing.selectedInventoryId || '').toString() === (sup.inventory_id || sup.id).toString();
+                              const supplierId = sup.inventory_id || sup.id;
+                              if (!supplierId) return null;
+                              const isSelected = (ing.selectedInventoryId || '').toString() === supplierId.toString();
                               return (
                                 <button
-                                  key={sup.inventory_id || sup.id}
+                                  key={supplierId}
                                   onClick={() => {
-                                    const val = (sup.inventory_id || sup.id).toString();
-                                    setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: val, currentPrice: sup.price || p.currentPrice } : p));
+                                    const val = supplierId.toString();
+                                    const newPrice = Number(sup.price) || Number(ing.currentPrice) || 0;
+                                    setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: val, currentPrice: newPrice } : p));
                                   }}
                                   className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${
                                     isSelected 
@@ -414,7 +518,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
             <button
               disabled={selectedTotal === 0 || missingIngredientsCount > 0}
-              onClick={() => onAddToCart({ ...recipe, cartIngredients: ingredientsState.filter(i => i.selected), finalPrice: selectedTotal }, servings)}
+              onClick={() => onAddToCart({ ...recipe, cartIngredients: ingredientsState.filter(i => i.selected), finalPrice: selectedTotal, base_servings: recipe.base_servings || 2 }, servings)}
               className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${selectedTotal === 0 || missingIngredientsCount > 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-600 dark:hover:bg-emerald-600 active:scale-95'}`}
             >
               <ShoppingBasket size={18} />

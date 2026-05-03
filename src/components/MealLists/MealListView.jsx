@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { Trash2, Plus, X, ChefHat } from 'lucide-react';
-import { RECIPES } from '../../data/recipes';
+import React, { useState, useEffect } from 'react';
+import { Trash2, Plus, X, ChefHat, Loader2 } from 'lucide-react';
 
 export const MealListView = ({ user, mealLists, onRefresh }) => {
   const [selectedList, setSelectedList] = useState(null);
@@ -8,6 +7,21 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
   const [loading, setLoading] = useState(false);
+  const [listRecipes, setListRecipes] = useState([]);
+  const [recipesLoading, setRecipesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedList) {
+      setListRecipes([]);
+      return;
+    }
+    setRecipesLoading(true);
+    fetch(`/api/meallist/${selectedList}/recipes`)
+      .then(res => res.json())
+      .then(data => setListRecipes(Array.isArray(data) ? data : []))
+      .catch(err => { console.error(err); setListRecipes([]); })
+      .finally(() => setRecipesLoading(false));
+  }, [selectedList]);
 
   const handleCreateMealList = async () => {
     if (!newListName.trim()) {
@@ -166,10 +180,6 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
           {selectedList ? (
             (() => {
               const list = mealLists.find(l => l.meal_list_id === selectedList);
-              const listRecipes = RECIPES.filter(r => {
-                // In production, fetch actual recipes for this list
-                return true;
-              }).slice(0, list?.recipe_count || 0);
 
               return (
                 <div className="space-y-6">
@@ -191,35 +201,42 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {listRecipes.length === 0 ? (
-                      <div className="col-span-full py-12 text-center bg-slate-50 dark:bg-slate-800 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-slate-700">
-                        <ChefHat size={40} className="mx-auto mb-4 text-slate-300 dark:text-slate-600" />
-                        <p className="text-slate-400 dark:text-slate-500 font-medium">No recipes in this list yet</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Add recipes from the Explore tab</p>
-                      </div>
-                    ) : (
-                      listRecipes.map(recipe => (
-                        <div key={recipe.id} className="bg-white dark:bg-slate-800 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-lg transition-all">
-                          <div className="relative h-40 overflow-hidden">
-                            <img src={recipe.image} className="w-full h-full object-cover" />
-                          </div>
-                          <div className="p-6">
-                            <h3 className="font-bold text-slate-900 dark:text-white mb-1">{recipe.title}</h3>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mb-4 italic">
-                              by {recipe.chef}
-                            </p>
-                            <button
-                              onClick={() => handleRemoveRecipe(selectedList, recipe.id)}
-                              className="w-full py-2 text-xs font-bold uppercase tracking-widest text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors flex items-center justify-center gap-2"
-                            >
-                              <X size={14} /> Remove
-                            </button>
-                          </div>
+                  {recipesLoading ? (
+                    <div className="flex items-center justify-center py-16 gap-3 text-slate-400">
+                      <Loader2 size={24} className="animate-spin text-emerald-500" />
+                      <span className="text-xs font-black uppercase tracking-widest">Loading recipes...</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {listRecipes.length === 0 ? (
+                        <div className="col-span-full py-12 text-center bg-slate-50 dark:bg-slate-800 rounded-[2rem] border-2 border-dashed border-slate-200 dark:border-slate-700">
+                          <ChefHat size={40} className="mx-auto mb-4 text-slate-300 dark:text-slate-600" />
+                          <p className="text-slate-400 dark:text-slate-500 font-medium">No recipes in this list yet</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Add recipes from the Explore tab</p>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      ) : (
+                        listRecipes.map(recipe => (
+                          <div key={recipe.recipe_id} className="bg-white dark:bg-slate-800 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-lg transition-all">
+                            <div className="p-6">
+                              <h3 className="font-bold text-slate-900 dark:text-white mb-1">{recipe.title}</h3>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mb-1">
+                                {recipe.cook_time_min} min • {recipe.difficulty_level}
+                              </p>
+                              {recipe.dietary_tag && (
+                                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest mb-4">{recipe.dietary_tag}</p>
+                              )}
+                              <button
+                                onClick={() => handleRemoveRecipe(selectedList, recipe.recipe_id)}
+                                className="w-full py-2 text-xs font-bold uppercase tracking-widest text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors flex items-center justify-center gap-2"
+                              >
+                                <X size={14} /> Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })()

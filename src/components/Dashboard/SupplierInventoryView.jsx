@@ -1,5 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+
+// Helper to get allowed units for an ingredient by name
+const getUnitOptionsForIngredient = (ingredient_name, allIngredients) => {
+  if (!ingredient_name) return [];
+  const ingredient = allIngredients.find(a => a.name.toLowerCase() === ingredient_name.toLowerCase());
+  if (!ingredient || !ingredient.allowed_units) return [];
+  
+  const units = ingredient.allowed_units.split(',');
+  const unitLabels = {
+    kg: 'kg (Kilogram)', g: 'g (Gram)', lb: 'lb (Pound)', oz: 'oz (Ounce)',
+    L: 'L (Liter)', ml: 'ml (Milliliter)', cup: 'cup', tbsp: 'tbsp (Tablespoon)',
+    tsp: 'tsp (Teaspoon)', pc: 'pc (Piece)', pcs: 'pcs (Pieces)', bunch: 'bunch',
+    clove: 'clove', spear: 'spear', can: 'can', mg: 'mg (Milligram)'
+  };
+  
+  return units.map(u => ({ value: u, label: unitLabels[u] || u }));
+};
 
 const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
@@ -41,9 +58,22 @@ export const SupplierInventoryView = ({ user }) => {
   const [allIngredients, setAllIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [newItem, setNewItem] = useState({ ingredient_name: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
+  const [newItem, setNewItem] = useState({ ingredient_name: '', unit: '', price: '', package_size: '1', available_qty: '' });
 
   const [error, setError] = useState(null);
+
+  // Get allowed units for currently selected ingredient
+  const allowedUnits = useMemo(() => 
+    getUnitOptionsForIngredient(newItem.ingredient_name, allIngredients), 
+    [newItem.ingredient_name, allIngredients]
+  );
+
+  // Auto-select first allowed unit when ingredient changes
+  useEffect(() => {
+    if (allowedUnits.length > 0 && !allowedUnits.find(u => u.value === newItem.unit)) {
+      setNewItem(prev => ({ ...prev, unit: allowedUnits[0].value }));
+    }
+  }, [allowedUnits, newItem.unit]);
 
   useEffect(() => {
     if (user?.id) {
@@ -172,7 +202,20 @@ export const SupplierInventoryView = ({ user }) => {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Unit</label>
-              <input type="text" onChange={e => setNewItem({ ...newItem, unit: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" defaultValue="kg" />
+              <select 
+                value={newItem.unit} 
+                onChange={e => setNewItem({ ...newItem, unit: e.target.value })} 
+                className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none"
+                disabled={!newItem.ingredient_name || allowedUnits.length === 0}
+              >
+                {allowedUnits.length === 0 ? (
+                  <option value="">Select ingredient first</option>
+                ) : (
+                  allowedUnits.map(u => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))
+                )}
+              </select>
             </div>
             <div className="flex items-end">
               <button onClick={handleAdd} className="w-full bg-slate-900 dark:bg-emerald-500 text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:opacity-90 transition-all">Save Item</button>
