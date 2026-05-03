@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Medal, Trophy, Star, TrendingUp, Award, User } from 'lucide-react';
+import { Loader2, Medal, Trophy, Star, Award, User } from 'lucide-react';
 
 export const LeaderboardView = ({ user }) => {
   const [leaderboard, setLeaderboard] = useState([]);
@@ -54,6 +54,7 @@ export const LeaderboardView = ({ user }) => {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
         {/* Main Leaderboard Column */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
@@ -69,17 +70,14 @@ export const LeaderboardView = ({ user }) => {
                 </div>
               ) : (
                 leaderboard.map((cook, index) => {
-                  const isCurrentUser = user && user.id === cook.user_id;
-
+                  const isCurrentUser = user && parseInt(user.id) === parseInt(cook.user_id);
                   return (
                     <React.Fragment key={cook.user_id}>
-                      <div
-                        className={`p-4 flex items-center justify-between transition-colors ${
-                          isCurrentUser ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                        }`}
-                      >
+                      <div className={`p-4 flex items-center justify-between transition-colors ${
+                        isCurrentUser ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      }`}>
                         <div className="flex items-center gap-4">
-                          {/* Rank */}
+                          {/* Rank badge */}
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm ${
                             index === 0 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
                             index === 1 ? 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300' :
@@ -95,7 +93,11 @@ export const LeaderboardView = ({ user }) => {
                               isCurrentUser ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-800 dark:text-white'
                             }`}>
                               {cook.username}
-                              {isCurrentUser && <span className="text-[9px] uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">You</span>}
+                              {isCurrentUser && (
+                                <span className="text-[9px] uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                                  You
+                                </span>
+                              )}
                             </p>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                               {cook.meal_coins} MealCoins
@@ -105,12 +107,8 @@ export const LeaderboardView = ({ user }) => {
 
                         {/* Stats */}
                         <div className="text-right">
-                          <p className="text-lg font-black text-slate-900 dark:text-white">
-                            {cook.cooked_count}
-                          </p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                            Recipes Cooked
-                          </p>
+                          <p className="text-lg font-black text-slate-900 dark:text-white">{cook.cooked_count}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Recipes Cooked</p>
                           {parseInt(cook.challenges_won) > 0 && (
                             <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest mt-0.5">
                               🏆 {cook.challenges_won} Challenge{parseInt(cook.challenges_won) > 1 ? 's' : ''} Won
@@ -132,7 +130,7 @@ export const LeaderboardView = ({ user }) => {
                             const wonAt = item?.won_at ? new Date(item.won_at).toLocaleDateString() : null;
                             return (
                               <span key={i} className="inline-flex items-center gap-1 text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full">
-                                🏆 {title}{wonAt && <span className="opacity-60">· {wonAt}</span>}
+                                🏆 {title}{wonAt && <span className="opacity-60"> · {wonAt}</span>}
                               </span>
                             );
                           })}
@@ -161,11 +159,11 @@ export const LeaderboardView = ({ user }) => {
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl">
                       <p className="text-2xl font-black text-slate-900 dark:text-white">{achievements.stats.cookedCount}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Recipes Cooked</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Cooked</p>
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl">
                       <p className="text-2xl font-black text-slate-900 dark:text-white">{achievements.stats.joinedCount}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Challenges Joined</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Joined</p>
                     </div>
                     <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800">
                       <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{achievements.stats.wonCount ?? 0}</p>
@@ -173,12 +171,11 @@ export const LeaderboardView = ({ user }) => {
                     </div>
                   </div>
 
-                  {/* Badges List */}
+                  {/* Badges */}
                   <div>
                     <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2">
                       <Award size={14} /> Earned Badges
                     </h3>
-
                     {achievements.badges.length === 0 ? (
                       <div className="text-center py-6 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                         <Star size={24} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
@@ -216,6 +213,7 @@ export const LeaderboardView = ({ user }) => {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
