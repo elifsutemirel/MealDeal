@@ -1320,22 +1320,36 @@ app.get('/api/challenges/:id/progress', async (req, res) => {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ message: 'userId required' });
     try {
+        // Count total recipes in challenge
         const totalRes = await pool.query(
             'SELECT COUNT(*) AS total FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1',
             [challengeId]
         );
         const total = parseInt(totalRes.rows[0].total);
 
-        const cookedRes = await pool.query(`
-            SELECT DISTINCT c.recipe_id
-            FROM "Comment" c
-            JOIN "KitchenChallenge_Recipe" kcr
-              ON kcr.recipe_id = c.recipe_id AND kcr.challenge_id = $1
-            WHERE c.user_id = $2 AND c.cooked_at IS NOT NULL`,
+        // Count approved submissions by this user
+        const approvedRes = await pool.query(
+            `SELECT recipe_id FROM "ChallengeSubmission" 
+             WHERE challenge_id = $1 AND user_id = $2 AND status = 'approved'`,
             [challengeId, userId]
         );
-        const cooked_recipe_ids = cookedRes.rows.map(r => r.recipe_id);
-        res.json({ cooked_count: cooked_recipe_ids.length, total, cooked_recipe_ids });
+
+        // Get all submissions to track status
+        const allSubmissions = await pool.query(
+            `SELECT submission_id, recipe_id, status, photo_url, review_note, submitted_at
+             FROM "ChallengeSubmission"
+             WHERE challenge_id = $1 AND user_id = $2`,
+            [challengeId, userId]
+        );
+
+        const cooked_recipe_ids = approvedRes.rows.map(r => r.recipe_id);
+        
+        res.json({ 
+            cooked_count: cooked_recipe_ids.length, 
+            total, 
+            cooked_recipe_ids,
+            submissions: allSubmissions.rows
+        });
     } catch (error) {
         console.error('PROGRESS ERROR:', error);
         res.status(500).json({ message: 'Error fetching progress.', detail: error.message });
@@ -1350,15 +1364,13 @@ app.get('/api/challenges/:id/leaderboard', async (req, res) => {
             SELECT
                 u.user_id,
                 u.username,
-                COUNT(DISTINCT c.recipe_id) AS cooked_count
+                COUNT(DISTINCT cs.recipe_id) AS cooked_count
             FROM "HomeCook_Challenge" hcc
             JOIN "User" u ON u.user_id = hcc.user_id
-            LEFT JOIN "Comment" c
-                ON c.user_id = hcc.user_id
-               AND c.cooked_at IS NOT NULL
-               AND c.recipe_id IN (
-                   SELECT recipe_id FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1
-               )
+            LEFT JOIN "ChallengeSubmission" cs 
+                ON cs.user_id = hcc.user_id 
+                AND cs.challenge_id = hcc.challenge_id
+                AND cs.status = 'approved'
             WHERE hcc.challenge_id = $1
             GROUP BY u.user_id, u.username
             ORDER BY cooked_count DESC
@@ -1389,6 +1401,304 @@ app.get('/api/challenges/:id/recipes', async (req, res) => {
     }
 });
 
+// POST /api/challenges — create new challenge (Verified Chef only)
+app.post('/api/challenges', async (req, res) => {
+    const { creator_id, title, description, start_date, end_date } = req.body;
+
+    if (!creator_id || !title || !start_date || !end_date) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Verify user is a Verified Chef
+        const chefCheck = await pool.query(
+            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1',
+            [creator_id]
+        );
+
+        if (chefCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Only Verified Chefs can create challenges.' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO "KitchenChallenge" (creator_id, title, description, start_date, end_date)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [creator_id, title, description || null, start_date, end_date]
+        );
+
+        res.json({ message: 'Challenge created successfully!', challenge: result.rows[0] });
+    } catch (error) {
+        console.error('CREATE CHALLENGE ERROR:', error);
+        res.status(500).json({ message: 'Error creating challenge.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/:id/recipes — add recipe to challenge (Creator only)
+app.post('/api/challenges/:id/recipes', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId, recipeId } = req.body;
+
+    console.log('ADD RECIPE REQUEST:', { challengeId, userId, recipeId });
+
+    if (!userId || !recipeId) {
+        console.log('MISSING FIELDS:', { userId, recipeId });
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Check if user is the creator
+        const challenge = await pool.query(
+            'SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+            [challengeId]
+        );
+
+        console.log('CHALLENGE FOUND:', challenge.rows[0]);
+
+        if (challenge.rows.length === 0) {
+            return res.status(404).json({ message: 'Challenge not found.' });
+        }
+
+        if (challenge.rows[0].creator_id !== parseInt(userId)) {
+            console.log('PERMISSION DENIED:', { creator_id: challenge.rows[0].creator_id, userId: parseInt(userId) });
+            return res.status(403).json({ message: 'Only the challenge creator can add recipes.' });
+        }
+
+        // Add recipe to challenge
+        await pool.query(
+            `INSERT INTO "KitchenChallenge_Recipe" (challenge_id, recipe_id)
+             VALUES ($1, $2)
+             ON CONFLICT (challenge_id, recipe_id) DO NOTHING`,
+            [challengeId, recipeId]
+        );
+
+        console.log('RECIPE ADDED SUCCESSFULLY');
+        res.json({ message: 'Recipe added to challenge!' });
+    } catch (error) {
+        console.error('ADD RECIPE ERROR:', error);
+        res.status(500).json({ message: 'Error adding recipe.', detail: error.message });
+    }
+});
+
+// DELETE /api/challenges/:challengeId/recipes/:recipeId — remove recipe from challenge
+app.delete('/api/challenges/:challengeId/recipes/:recipeId', async (req, res) => {
+    const { challengeId, recipeId } = req.params;
+
+    try {
+        await pool.query(
+            'DELETE FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1 AND recipe_id = $2',
+            [challengeId, recipeId]
+        );
+
+        res.json({ message: 'Recipe removed from challenge!' });
+    } catch (error) {
+        console.error('REMOVE RECIPE ERROR:', error);
+        res.status(500).json({ message: 'Error removing recipe.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/:id/submit — submit photo proof for recipe completion (Home Cook)
+app.post('/api/challenges/:id/submit', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId, recipeId, photoUrl } = req.body;
+
+    if (!userId || !recipeId || !photoUrl) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Verify user is a home cook and joined the challenge
+        const joinCheck = await pool.query(
+            'SELECT * FROM "HomeCook_Challenge" WHERE user_id = $1 AND challenge_id = $2',
+            [userId, challengeId]
+        );
+
+        if (joinCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'You must join the challenge first.' });
+        }
+
+        // Check if recipe is part of challenge
+        const recipeCheck = await pool.query(
+            'SELECT * FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1 AND recipe_id = $2',
+            [challengeId, recipeId]
+        );
+
+        if (recipeCheck.rows.length === 0) {
+            return res.status(400).json({ message: 'Recipe is not part of this challenge.' });
+        }
+
+        // Check if there's already a submission for this recipe
+        const existingSubmission = await pool.query(
+            'SELECT * FROM "ChallengeSubmission" WHERE user_id = $1 AND challenge_id = $2 AND recipe_id = $3',
+            [userId, challengeId, recipeId]
+        );
+
+        let result;
+        if (existingSubmission.rows.length > 0) {
+            const existing = existingSubmission.rows[0];
+            
+            // Only allow resubmission if previous was rejected
+            if (existing.status === 'rejected') {
+                // Update the existing submission with new photo and reset status to pending
+                result = await pool.query(
+                    `UPDATE "ChallengeSubmission" 
+                     SET photo_url = $1, status = 'pending', reviewed_by = NULL, review_note = NULL, reviewed_at = NULL
+                     WHERE submission_id = $2
+                     RETURNING *`,
+                    [photoUrl, existing.submission_id]
+                );
+            } else {
+                return res.status(400).json({ 
+                    message: existing.status === 'approved' 
+                        ? 'This recipe has already been approved.' 
+                        : 'Submission already pending review.'
+                });
+            }
+        } else {
+            // Insert new submission
+            result = await pool.query(
+                `INSERT INTO "ChallengeSubmission" (user_id, challenge_id, recipe_id, photo_url)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING *`,
+                [userId, challengeId, recipeId, photoUrl]
+            );
+        }
+
+        res.json({ message: 'Submission uploaded successfully!', submission: result.rows[0] });
+    } catch (error) {
+        console.error('SUBMIT PHOTO ERROR:', error);
+        res.status(500).json({ message: 'Error submitting photo.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/submissions — get submissions for review (Challenge Creator only)
+app.get('/api/challenges/:id/submissions', async (req, res) => {
+    const challengeId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            SELECT
+                cs.submission_id,
+                cs.user_id,
+                cs.recipe_id,
+                cs.photo_url,
+                cs.status,
+                cs.submitted_at,
+                cs.review_note,
+                u.username,
+                r.title AS recipe_title
+            FROM "ChallengeSubmission" cs
+            JOIN "User" u ON u.user_id = cs.user_id
+            JOIN "Recipe" r ON r.recipe_id = cs.recipe_id
+            WHERE cs.challenge_id = $1
+            ORDER BY cs.submitted_at DESC
+        `, [challengeId]);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('SUBMISSIONS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching submissions.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/submissions/:id/review — review submission (approve/reject)
+app.post('/api/challenges/submissions/:id/review', async (req, res) => {
+    const submissionId = req.params.id;
+    const { status, reviewNote } = req.body;
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    try {
+        // Update submission status
+        await pool.query(
+            `UPDATE "ChallengeSubmission" 
+             SET status = $1, review_note = $2, reviewed_at = CURRENT_TIMESTAMP
+             WHERE submission_id = $3`,
+            [status, reviewNote || null, submissionId]
+        );
+
+        // If approved, check if this user completed all recipes
+        if (status === 'approved') {
+            const submission = await pool.query(
+                'SELECT challenge_id, user_id FROM "ChallengeSubmission" WHERE submission_id = $1',
+                [submissionId]
+            );
+
+            if (submission.rows.length > 0) {
+                const { challenge_id, user_id } = submission.rows[0];
+
+                // Count total recipes in challenge
+                const totalRecipes = await pool.query(
+                    'SELECT COUNT(*) AS total FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1',
+                    [challenge_id]
+                );
+
+                // Count approved submissions by this user
+                const approvedCount = await pool.query(
+                    `SELECT COUNT(*) AS approved FROM "ChallengeSubmission" 
+                     WHERE challenge_id = $1 AND user_id = $2 AND status = 'approved'`,
+                    [challenge_id, user_id]
+                );
+
+                const total = parseInt(totalRecipes.rows[0].total);
+                const approved = parseInt(approvedCount.rows[0].approved);
+
+                // If user completed all recipes, check if they're the first to complete
+                if (total > 0 && approved >= total) {
+                    const challenge = await pool.query(
+                        'SELECT winner_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+                        [challenge_id]
+                    );
+
+                    if (challenge.rows.length > 0 && !challenge.rows[0].winner_id) {
+                        // This user is the first to complete - set as winner
+                        await pool.query(
+                            'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
+                            [user_id, challenge_id]
+                        );
+
+                        // Add reward
+                        await pool.query(
+                            'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3)',
+                            [challenge_id, user_id, 100]
+                        );
+                    }
+                }
+            }
+        }
+
+        res.json({ message: 'Submission reviewed successfully!' });
+    } catch (error) {
+        console.error('REVIEW SUBMISSION ERROR:', error);
+        res.status(500).json({ message: 'Error reviewing submission.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/participants — get all participants
+app.get('/api/challenges/:id/participants', async (req, res) => {
+    const challengeId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            SELECT
+                u.user_id,
+                u.username,
+                hcc.joined_at
+            FROM "HomeCook_Challenge" hcc
+            JOIN "User" u ON u.user_id = hcc.user_id
+            WHERE hcc.challenge_id = $1
+            ORDER BY hcc.joined_at DESC
+        `, [challengeId]);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('PARTICIPANTS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching participants.', detail: error.message });
+    }
+});
+
 // Client-side error logging endpoint
 app.post('/api/client-error', (req, res) => {
     try {
@@ -1412,11 +1722,19 @@ app.get('/api/leaderboard/global', async (req, res) => {
                 u.user_id, 
                 u.username, 
                 u.total AS meal_coins,
-                COUNT(c.comment_id) AS cooked_count
+                COUNT(DISTINCT c.comment_id) AS cooked_count,
+                COUNT(DISTINCT kc.challenge_id) AS challenges_won,
+                COALESCE(
+                    json_agg(
+                        DISTINCT kc.title
+                    ) FILTER (WHERE kc.challenge_id IS NOT NULL),
+                    '[]'::json
+                ) AS won_challenges
             FROM "User" u
             LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
+            LEFT JOIN "KitchenChallenge" kc ON kc.winner_id = u.user_id
             GROUP BY u.user_id, u.username, u.total
-            ORDER BY cooked_count DESC, meal_coins DESC;
+            ORDER BY challenges_won DESC, cooked_count DESC, meal_coins DESC;
         `;
         const result = await pool.query(query);
         res.json(result.rows);

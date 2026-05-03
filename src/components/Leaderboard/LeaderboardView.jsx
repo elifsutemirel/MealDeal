@@ -111,8 +111,23 @@ export const LeaderboardView = ({ user }) => {
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                           Recipes Cooked
                         </p>
+                        {parseInt(cook.challenges_won) > 0 && (
+                          <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest mt-0.5">
+                            🏆 {cook.challenges_won} Challenge{cook.challenges_won > 1 ? 's' : ''} Won
+                          </p>
+                        )}
                       </div>
                     </div>
+                    {/* Won challenge badges */}
+                    {Array.isArray(cook.won_challenges) && cook.won_challenges.length > 0 && (
+                      <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+                        {cook.won_challenges.map((title, i) => (
+                          <span key={i} className="text-[9px] font-black bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                            🏆 {title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   );
                 })
               )}

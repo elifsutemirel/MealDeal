@@ -11,6 +11,8 @@ DROP TABLE IF EXISTS "Comment" CASCADE;
 DROP TABLE IF EXISTS "CartItem" CASCADE;
 DROP TABLE IF EXISTS "Cart" CASCADE;
 DROP TABLE IF EXISTS "Order" CASCADE;
+DROP TABLE IF EXISTS "ChallengeReward" CASCADE;
+DROP TABLE IF EXISTS "ChallengeSubmission" CASCADE;
 DROP TABLE IF EXISTS "KitchenChallenge_Recipe" CASCADE;
 DROP TABLE IF EXISTS "HomeCook_Challenge" CASCADE;
 DROP TABLE IF EXISTS "KitchenChallenge" CASCADE;
@@ -199,8 +201,10 @@ CREATE TABLE "AISuggestion" (
 
 CREATE TABLE "KitchenChallenge" (
     challenge_id  SERIAL       PRIMARY KEY,
+    creator_id    INT          REFERENCES "VerifiedChef"(user_id) ON DELETE SET NULL,
+    winner_id     INT          REFERENCES "User"(user_id) ON DELETE SET NULL,
     title         VARCHAR(255) NOT NULL,
-    description   TEXT         NOT NULL,
+    description   TEXT,
     start_date    DATE         NOT NULL,
     end_date      DATE         NOT NULL
 );
@@ -216,6 +220,29 @@ CREATE TABLE "HomeCook_Challenge" (
     challenge_id INT       NOT NULL REFERENCES "KitchenChallenge"(challenge_id)  ON DELETE CASCADE,
     joined_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, challenge_id)
+);
+
+CREATE TABLE "ChallengeSubmission" (
+    submission_id SERIAL       PRIMARY KEY,
+    user_id       INT          NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+    challenge_id  INT          NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+    recipe_id     INT          NOT NULL REFERENCES "Recipe"(recipe_id) ON DELETE CASCADE,
+    photo_url     TEXT         NOT NULL,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    submitted_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by   INT          REFERENCES "User"(user_id) ON DELETE SET NULL,
+    review_note   TEXT,
+    reviewed_at   TIMESTAMP,
+    UNIQUE (user_id, challenge_id, recipe_id)
+);
+
+CREATE TABLE "ChallengeReward" (
+    reward_id     SERIAL    PRIMARY KEY,
+    challenge_id  INT       NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+    user_id       INT       NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+    reward_points INT       NOT NULL DEFAULT 0,
+    awarded_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (challenge_id, user_id)
 );
 
 -- =============================================================
