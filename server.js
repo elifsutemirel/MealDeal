@@ -2728,6 +2728,41 @@ app.get('/api/users/:id/rewards', async (req, res) => {
     }
 });
 
+// DELETE /api/user/:id — Delete user account and all associated data
+app.delete('/api/user/:id', async (req, res) => {
+    const userId = req.params.id;
+    
+    try {
+        await pool.query('BEGIN');
+
+        // Remove dependencies that are RESTRICTed and can block cascading user deletion.
+        await pool.query(
+            'DELETE FROM "Order" WHERE cart_id IN (SELECT cart_id FROM "Cart" WHERE user_id = $1)',
+            [userId]
+        );
+        await pool.query(
+            'DELETE FROM "CartItem" WHERE inventory_id IN (SELECT inventory_id FROM "SupplierInventory" WHERE supplier_id = $1)',
+            [userId]
+        );
+
+        // Delete user; schema ON DELETE CASCADE handles all related rows.
+        const deleted = await pool.query('DELETE FROM "User" WHERE user_id = $1 RETURNING user_id', [userId]);
+        if (deleted.rowCount === 0) {
+            await pool.query('ROLLBACK');
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        await pool.query('COMMIT');
+        
+        res.json({ message: 'User account deleted successfully.' });
+    } catch (error) {
+        // Rollback transaction on error
+        await pool.query('ROLLBACK').catch(err => console.error('Rollback error:', err));
+        console.error('DELETE USER ERROR:', error);
+        res.status(500).json({ message: 'Error deleting user account.', detail: error.message });
+    }
+});
+
 app.use((error, _req, res, next) => {
     if (error instanceof multer.MulterError || error.message?.includes('Only PDF')) {
         return res.status(400).json({ message: error.message });
