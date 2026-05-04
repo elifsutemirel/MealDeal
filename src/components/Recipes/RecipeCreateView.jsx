@@ -291,7 +291,7 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                 </div>
                 <div>
                   <label className="recipe-label">Servings</label>
-                  <div className="mt-2 flex items-center rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(203, 213, 225, 0.95)', background: 'rgba(248, 250, 252, 0.95)' }}>
+                  <div className="recipe-servings-control">
                     <button type="button" onClick={() => setServings(Math.max(1, servings - 1))} className="px-4 py-3 text-slate-500 hover:bg-white dark:hover:bg-slate-800">−</button>
                     <input
                       type="number"

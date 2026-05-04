@@ -6,9 +6,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies inside Linux so Rollup's optional native package matches
-# the container platform instead of a Windows-generated lockfile.
-RUN npm install && npm install --no-save @rollup/rollup-linux-x64-musl@4.60.0
+# Install dependencies from lockfile first.
+RUN npm ci
+
+# Rollup optional native package can be skipped by npm on Alpine; install the
+# correct one for the current target architecture explicitly.
+ARG TARGETARCH
+RUN npm install --no-save @rollup/rollup-linux-${TARGETARCH}-musl@4.60.0
 
 # Copy source code
 COPY . .
@@ -27,7 +31,7 @@ WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy built Vite files from builder
 COPY --from=builder /app/dist ./dist

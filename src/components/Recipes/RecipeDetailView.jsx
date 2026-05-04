@@ -351,7 +351,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-500 pt-8 pb-20">
-      <button onClick={onBack} className="flex items-center gap-2 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 mb-8 font-black text-[10px] uppercase tracking-widest">
+      <button onClick={onBack} className="flex items-center gap-2 text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 mb-8 font-black text-[10px] uppercase tracking-widest">
         <ArrowLeft size={16} /> Back to discovery
       </button>
 
@@ -373,7 +373,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
           <div className="flex border-b border-slate-100 dark:border-slate-700 mb-8">
             {['ingredients', 'steps', 'reviews'].map(view => (
-              <button key={view} onClick={() => setActiveSubView(view)} className={`px-6 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubView === view ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-400 dark:text-slate-500'}`}>
+              <button key={view} onClick={() => setActiveSubView(view)} className={`px-6 py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeSubView === view ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-slate-400 dark:text-slate-400'}`}>
                 {view}
               </button>
             ))}
@@ -383,7 +383,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
             {activeSubView === 'ingredients' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-[10px]">Select what you need</h3>
+                  <h3 className="font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest text-[10px]">Select what you need</h3>
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Uncheck items you already have.</span>
                 </div>
                 {ingredientsState.map(ing => (
@@ -397,7 +397,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       />
                       <div>
                         <p className={`font-bold text-slate-800 dark:text-white ${!ing.selected && 'line-through'}`}>{ing.name}</p>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">{ing.taxonomy}</p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-widest">{ing.taxonomy}</p>
 
                       </div>
                     </div>
@@ -424,7 +424,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                           );
                           if (validSuppliers.length === 0) {
                             return (
-                              <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
+                              <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
                                 No supplier available
                               </div>
                             );
@@ -452,7 +452,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                                     className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${
                                       isSelected
                                         ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-500'
+                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-400 border-slate-100 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-500'
                                     }`}
                                     title={`$${sup.convertedPrice.toFixed(4)}/${ing.unit} (supplier sells in ${sup.unit})`}
                                   >
@@ -465,7 +465,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                           );
                         })()}
                         {!user && (
-                          <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">Sign in to see prices</p>
+                          <p className="text-[9px] text-slate-400 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">Sign in to see prices</p>
                         )}
                       </div>
                     </div>
@@ -510,7 +510,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                           />
                         </button>
                       ))}
-                      <span className="text-xs font-bold text-slate-400 dark:text-slate-500 ml-2">
+                      <span className="text-xs font-bold text-slate-400 dark:text-slate-400 ml-2">
                         {reviewRating > 0 ? `${reviewRating}/5` : 'Select rating'}
                       </span>
                     </div>
@@ -518,12 +518,12 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       value={reviewText}
                       onChange={(e) => setReviewText(e.target.value)}
                       placeholder="Share your experience with this recipe..."
-                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 h-20 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 h-20 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-400"
                     />
                     <button
                       onClick={handleSubmitReview}
                       disabled={!reviewText.trim() || reviewRating === 0 || reviewSubmitting}
-                      className={`mt-3 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all ${!reviewText.trim() || reviewRating === 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'}`}
+                      className={`mt-3 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all ${!reviewText.trim() || reviewRating === 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'}`}
                     >
                       {reviewSubmitting ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> : <Send size={14} />}
                       {reviewSubmitting ? 'Posting...' : 'Submit Review'}
@@ -531,19 +531,19 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                   </div>
                 )}
                 {!canReview && user && (
-                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-400 font-bold text-center">
                     Only Home Cooks and Verified Chefs can post reviews.
                   </div>
                 )}
                 {!user && (
-                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-500 font-bold text-center">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-700 rounded-2xl text-xs text-slate-400 dark:text-slate-400 font-bold text-center">
                     Sign in to leave a review.
                   </div>
                 )}
 
                 {/* Existing Reviews */}
                 {reviews.length === 0 ? (
-                  <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">No reviews yet</div>
+                  <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-500 uppercase tracking-widest">No reviews yet</div>
                 ) : (
                   reviews.map((rev, idx) => (
                     <div key={rev.id || idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl animate-in fade-in">
@@ -569,19 +569,19 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         {/* ORDER CUSTOMIZATION SIDEBAR */}
         <div className="lg:w-96">
           <div className="sticky top-24 bg-white dark:bg-slate-800 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-2xl p-8">
-            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-8 text-center">Order Customization</h3>
+            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest mb-8 text-center">Order Customization</h3>
 
             <div className="flex items-center justify-between mb-10">
               <span className="text-xs font-black text-slate-900 dark:text-white uppercase">Serving Size</span>
               <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-600">
-                <button onClick={() => setServings(Math.max(1, servings - 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Minus size={16} /></button>
+                <button onClick={() => setServings(Math.max(1, servings - 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"><Minus size={16} /></button>
                 <span className="text-xl font-black text-slate-900 dark:text-white w-8 text-center">{servings}</span>
-                <button onClick={() => setServings(Math.min(12, servings + 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"><Plus size={16} /></button>
+                <button onClick={() => setServings(Math.min(12, servings + 1))} className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"><Plus size={16} /></button>
               </div>
             </div>
 
             <div className="space-y-3 mb-10">
-              <div className="flex justify-between text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">
+              <div className="flex justify-between text-xs font-bold text-slate-400 dark:text-slate-400 uppercase">
                 <span>Selected Ingredients ({ingredientsState.filter(i => i.selected).length})</span>
                 <span className="text-slate-900 dark:text-white">${selectedTotal.toFixed(2)}</span>
               </div>
@@ -598,7 +598,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
             <button
               disabled={selectedTotal === 0 || missingIngredientsCount > 0}
               onClick={() => onAddToCart({ ...recipe, cartIngredients: ingredientsState.filter(i => i.selected), finalPrice: selectedTotal, base_servings: recipe.base_servings || 2 }, servings)}
-              className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${selectedTotal === 0 || missingIngredientsCount > 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-600 dark:hover:bg-emerald-600 active:scale-95'}`}
+              className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${selectedTotal === 0 || missingIngredientsCount > 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 hover:bg-emerald-600 dark:hover:bg-emerald-600 active:scale-95'}`}
             >
               <ShoppingBasket size={18} />
               {missingIngredientsCount > 0 ? 'Resolve Missing Items' : 'Shop This Meal'}
@@ -620,10 +620,10 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                 <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-2xl"><Sparkles size={24} /></div>
                 <div>
                   <h3 className="text-xl font-black text-slate-800 dark:text-white">Ask AI to Substitute</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase">Target: {aiTargetIngredient.name}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-400 font-bold uppercase">Target: {aiTargetIngredient.name}</p>
                 </div>
               </div>
-              <button onClick={() => setAiTargetIngredient(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-500"><X size={20} /></button>
+              <button onClick={() => setAiTargetIngredient(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-400"><X size={20} /></button>
             </div>
 
             {!aiResult ? (
@@ -633,7 +633,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   placeholder="e.g., 'I have a peanut allergy', 'It is out of stock', 'I want something cheaper'..."
-                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400 h-24 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                  className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-indigo-500 dark:focus:border-indigo-400 h-24 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-400"
                 />
                 <button
                   onClick={handleGenerateAISub}
@@ -648,7 +648,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
               <div className="space-y-6 animate-in slide-in-from-bottom-4">
                 <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-3xl border border-indigo-100 dark:border-indigo-800">
                   <div className="flex items-center gap-3 mb-4">
-                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500 line-through">{aiResult.original}</span>
+                    <span className="text-xs font-bold text-slate-400 dark:text-slate-400 line-through">{aiResult.original}</span>
                     <ArrowRight size={14} className="text-indigo-500 dark:text-indigo-400" />
                     <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">{aiResult.suggestion}</span>
                   </div>
@@ -673,15 +673,15 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h3 className="text-xl font-black text-slate-800 dark:text-white">Add to Meal List</h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase mt-1">Recipe: {recipe.title}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-400 font-bold uppercase mt-1">Recipe: {recipe.title}</p>
               </div>
-              <button onClick={() => setShowMealListModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-500"><X size={20} /></button>
+              <button onClick={() => setShowMealListModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full text-slate-400 dark:text-slate-400"><X size={20} /></button>
             </div>
 
             {userMealLists.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-slate-400 dark:text-slate-500 text-sm font-medium mb-4">No meal lists yet</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">Create your first meal list to save recipes</p>
+                <p className="text-slate-400 dark:text-slate-400 text-sm font-medium mb-4">No meal lists yet</p>
+                <p className="text-xs text-slate-400 dark:text-slate-400 mb-6">Create your first meal list to save recipes</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -692,7 +692,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                     className="w-full text-left p-4 bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-2xl hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all"
                   >
                     <p className="font-bold text-slate-800 dark:text-white">{list.name}</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">{list.recipe_count || 0} recipes</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-400">{list.recipe_count || 0} recipes</p>
                   </button>
                 ))}
               </div>

@@ -18,23 +18,23 @@ const InventoryRow = ({ item, onUpdate, onDelete }) => {
 
   return (
     <tr className="group hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors">
-      <td className="px-10 py-8 font-black text-slate-800 dark:text-white">{item.ingredient_name}</td>
-      <td className="px-10 py-8">
+      <td className="px-4 py-8 font-black text-slate-800 dark:text-white">{item.ingredient_name}</td>
+      <td className="px-4 py-8">
         <div className="flex items-center gap-1">
           <span className="text-slate-400">$</span>
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="w-20 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="w-28 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
         </div>
       </td>
-      <td className="px-10 py-8">
+      <td className="px-4 py-8">
         <div className="flex items-center gap-2">
-          <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="w-16 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+          <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="w-32 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
           <span className="text-[10px] font-black uppercase text-slate-400">{item.unit}</span>
         </div>
       </td>
-      <td className="px-10 py-8">
+      <td className="px-4 py-8">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(item.last_updated).toLocaleDateString()}</span>
       </td>
-      <td className="px-10 py-8 text-right flex flex-col gap-2 justify-center items-end">
+      <td className="px-4 py-8 text-right flex flex-col gap-2 justify-center items-end">
         {hasChanged ? (
           <button onClick={() => onUpdate(item.inventory_id, price, qty)} className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors">Update</button>
         ) : (
@@ -221,11 +221,11 @@ export const SupplierInventoryView = ({ user }) => {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-slate-50 dark:border-slate-700/50">
-              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ingredient</th>
-              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Price</th>
-              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Available Qty</th>
-              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Last Updated</th>
-              <th className="px-10 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
+              <th className="px-4 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ingredient</th>
+              <th className="px-4 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Price</th>
+              <th className="px-4 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Available Qty</th>
+              <th className="px-4 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Last Updated</th>
+              <th className="px-4 py-8 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-700/30">

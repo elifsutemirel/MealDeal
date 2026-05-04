@@ -69,7 +69,7 @@ export const LeaderboardView = ({ user }) => {
           </div>
 
           {leaderboard.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center text-slate-400 font-medium">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-12 text-center text-slate-400 font-medium">
               No cooks on the leaderboard yet.
             </div>
           ) : (
@@ -83,10 +83,10 @@ export const LeaderboardView = ({ user }) => {
                   key={cook.user_id}
                   className={`rounded-2xl border transition-all ${
                     isCurrentUser
-                      ? 'bg-emerald-50 border-emerald-200 ring-2 ring-emerald-300/50'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 ring-2 ring-emerald-300/50 dark:ring-emerald-900/30'
                       : index === 0
-                      ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-100'
-                      : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-sm'
+                      ? 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/10 border-amber-100 dark:border-amber-800'
+                      : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600 hover:shadow-sm'
                   }`}
                 >
                   <div className="p-5 flex items-center gap-4">
@@ -105,7 +105,7 @@ export const LeaderboardView = ({ user }) => {
                         ? 'bg-emerald-500 text-white'
                         : index === 0
                         ? 'bg-amber-400 text-white'
-                        : 'bg-slate-200 text-slate-600'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>
                       {initials}
                     </div>
@@ -114,12 +114,12 @@ export const LeaderboardView = ({ user }) => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={`font-black text-base truncate ${
-                          isCurrentUser ? 'text-emerald-700' : index === 0 ? 'text-amber-700' : 'text-slate-800'
+                          isCurrentUser ? 'text-emerald-700 dark:text-emerald-400' : index === 0 ? 'text-amber-700 dark:text-amber-400' : 'text-slate-800 dark:text-slate-200'
                         }`}>
                           {cook.username}
                         </span>
                         {isCurrentUser && (
-                          <span className="text-[9px] uppercase tracking-widest bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-black">
+                          <span className="text-[9px] uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-black">
                             You
                           </span>
                         )}
@@ -142,8 +142,8 @@ export const LeaderboardView = ({ user }) => {
                     {/* Stats */}
                     <div className="flex items-center gap-4 flex-shrink-0">
                       <div className="text-center">
-                        <p className="text-xl font-black text-slate-800">{cook.cooked_count}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Cooked</p>
+                        <p className="text-xl font-black text-slate-800 dark:text-white">{cook.cooked_count}</p>
+                        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Cooked</p>
                       </div>
                       {parseInt(cook.challenges_won) > 0 && (
                         <div className="text-center bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
@@ -178,10 +178,10 @@ export const LeaderboardView = ({ user }) => {
         {/* Badges & Achievements Column */}
         <div className="space-y-6">
           {user?.role === 'Home Cook' ? (
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sticky top-24">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-6 sticky top-24">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
-                  <Medal className="text-emerald-600" size={18} />
+                <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center">
+                  <Medal className="text-emerald-600 dark:text-emerald-400" size={18} />
                 </div>
                 <h2 className="text-lg font-black text-primary">Your Achievements</h2>
               </div>
@@ -191,9 +191,9 @@ export const LeaderboardView = ({ user }) => {
                   {/* Stats Grid */}
                   <div className="grid grid-cols-3 gap-2 mb-6">
                     {[
-                      { value: achievements.stats.cookedCount, label: 'Cooked', color: 'text-slate-800', bg: 'bg-slate-50', border: 'border-slate-100' },
-                      { value: achievements.stats.joinedCount, label: 'Joined', color: 'text-slate-800', bg: 'bg-slate-50', border: 'border-slate-100' },
-                      { value: achievements.stats.wonCount ?? 0, label: '🏆 Won', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
+                      { value: achievements.stats.cookedCount, label: 'Cooked', color: 'text-slate-800 dark:text-white', bg: 'bg-slate-50 dark:bg-slate-900/50', border: 'border-slate-100 dark:border-slate-700' },
+                      { value: achievements.stats.joinedCount, label: 'Joined', color: 'text-slate-800 dark:text-white', bg: 'bg-slate-50 dark:bg-slate-900/50', border: 'border-slate-100 dark:border-slate-700' },
+                      { value: achievements.stats.wonCount ?? 0, label: '🏆 Won', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-100 dark:border-amber-800' },
                     ].map(({ value, label, color, bg, border }) => (
                       <div key={label} className={`${bg} border ${border} p-3 rounded-xl text-center`}>
                         <p className={`text-2xl font-black ${color}`}>{value}</p>
@@ -208,7 +208,7 @@ export const LeaderboardView = ({ user }) => {
                       <Award size={12} /> Earned Badges
                     </h3>
                     {achievements.badges.length === 0 ? (
-                      <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                         <Star size={24} className="mx-auto text-slate-300 mb-2" />
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">No badges yet</p>
                         <p className="text-[10px] text-slate-400 mt-1">Cook recipes or join challenges!</p>
@@ -216,13 +216,13 @@ export const LeaderboardView = ({ user }) => {
                     ) : (
                       <div className="space-y-2">
                         {achievements.badges.map(badge => (
-                          <div key={badge.id} className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100 transition-colors rounded-xl border border-slate-100">
-                            <div className="w-10 h-10 bg-white rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-xl flex-shrink-0">
+                          <div key={badge.id} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors rounded-xl border border-slate-100 dark:border-slate-700">
+                            <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center text-xl flex-shrink-0">
                               {badge.icon}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-black text-slate-800 leading-tight">{badge.name}</p>
-                              <p className="text-[10px] text-slate-500 leading-snug mt-0.5">{badge.description}</p>
+                              <p className="text-sm font-black text-slate-800 dark:text-white leading-tight">{badge.name}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">{badge.description}</p>
                             </div>
                           </div>
                         ))}
@@ -237,12 +237,12 @@ export const LeaderboardView = ({ user }) => {
               )}
             </div>
           ) : (
-            <div className="bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center sticky top-24">
-              <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-4">
-                <User size={28} className="text-slate-300" />
+            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 p-8 text-center sticky top-24">
+              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center mx-auto mb-4">
+                <User size={28} className="text-slate-300 dark:text-slate-600" />
               </div>
-              <h3 className="text-base font-black text-slate-800 mb-2">Want to earn badges?</h3>
-              <p className="text-sm text-slate-500">Register as a Home Cook to track your recipes, join challenges, and collect badges.</p>
+              <h3 className="text-base font-black text-slate-800 dark:text-white mb-2">Want to earn badges?</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Register as a Home Cook to track your recipes, join challenges, and collect badges.</p>
             </div>
           )}
         </div>
