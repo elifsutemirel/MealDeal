@@ -89,19 +89,6 @@ async function requireAdmin(userId, db = pool) {
     }
 }
 
-async function ensureApplicationUploadColumns() {
-    await pool.query(`
-        ALTER TABLE "VerifiedChefApplication"
-        ADD COLUMN IF NOT EXISTS cv_file_path VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS certificate_file_path VARCHAR(255);
-    `);
-
-    await pool.query(`
-        ALTER TABLE "VerifiedChefApplication"
-        DROP COLUMN IF EXISTS cv_url;
-    `);
-}
-
 async function ensureChallengeWorkflowSchema() {
     await pool.query(`
         ALTER TABLE "KitchenChallenge"
@@ -199,8 +186,9 @@ function handleAdminError(res, error, label) {
 
 // REGISTER
 app.post('/api/auth/register', async (req, res) => {
-    const { username, email, password } = req.body;
-    const publicRole = 'Home Cook';
+    const { username, email, password, role, address, locationName } = req.body;
+    const isSupplier = role === 'local_supplier';
+    const publicRole = isSupplier ? 'Local Supplier' : 'Home Cook';
     let client;
     try {
         client = await pool.connect();
@@ -216,6 +204,11 @@ app.post('/api/auth/register', async (req, res) => {
             });
         }
 
+        if (isSupplier && (!address || !locationName)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'Address and location name are required for Local Supplier accounts.' });
+        }
+
         // 2. Hash password
         const passwordHash = await bcrypt.hash(password, 10);
 
@@ -226,10 +219,16 @@ app.post('/api/auth/register', async (req, res) => {
         );
         const userId = userResult.rows[0].user_id;
 
-        // 4. Public registration is always Home Cook. Admin and Verified Chef
-        // accounts are controlled by seed/admin approval workflows.
-        await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
-        await client.query('INSERT INTO "HomeCook" (user_id) VALUES ($1)', [userId]);
+        // 4. Insert into role-specific tables
+        if (isSupplier) {
+            await client.query(
+                'INSERT INTO "LocalSupplier" (user_id, address, location_name) VALUES ($1, $2, $3)',
+                [userId, address, locationName]
+            );
+        } else {
+            await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
+            await client.query('INSERT INTO "HomeCook" (user_id) VALUES ($1)', [userId]);
+        }
 
         await client.query('COMMIT');
         res.status(201).json({ user_id: userId, username, email, role: publicRole });
@@ -2747,7 +2746,6 @@ app.listen(PORT, async () => {
     try {
         await pool.query('SELECT NOW()');
         console.log('PostgreSQL Connected Successfully');
-        await ensureApplicationUploadColumns();
         await ensureChallengeWorkflowSchema();
         await ensureMockAdminAccount();
         await seedChallengesIfEmpty();

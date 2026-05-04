@@ -6,6 +6,9 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('home_cook');
+  const [address, setAddress] = useState('');
+  const [locationName, setLocationName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
@@ -44,10 +47,15 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
         if (!res.ok) throw new Error(data.message || 'Invalid email or password.');
         onLogin({ id: data.user_id, name: data.username, username: data.username, role: data.role, email: data.email });
       } else {
+        if (role === 'local_supplier' && (!address || !locationName)) {
+          setError('Address and location name are required for Local Supplier accounts.');
+          setLoading(false);
+          return;
+        }
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({ username, email, password, role, address, locationName }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message + (data.detail ? ': ' + data.detail : '') || 'Registration failed.');
@@ -124,7 +132,7 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                 {isLogin ? 'Welcome Back' : 'Create an Account'}
               </h2>
               <p className="text-sm text-slate-400 text-center mb-7 font-medium">
-                {isLogin ? 'Log in to manage your meals and orders.' : 'New public accounts are created as Home Cooks.'}
+                {isLogin ? 'Log in to manage your meals and orders.' : 'Choose your role to get started.'}
               </p>
 
               {error && (
@@ -152,10 +160,59 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                         className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
                       />
                     </div>
-                    <div className="p-4 rounded-2xl bg-emerald-900/20 border border-emerald-700/40">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Role</p>
-                      <p className="text-sm font-bold text-emerald-100 mt-1">Home Cook</p>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Role</label>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setRole('home_cook')}
+                          className={`flex-1 py-3 rounded-2xl border font-bold text-sm transition-all ${
+                            role === 'home_cook'
+                              ? 'bg-emerald-900/30 border-emerald-600 text-emerald-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                          }`}
+                        >
+                          Home Cook
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRole('local_supplier')}
+                          className={`flex-1 py-3 rounded-2xl border font-bold text-sm transition-all ${
+                            role === 'local_supplier'
+                              ? 'bg-emerald-900/30 border-emerald-600 text-emerald-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                          }`}
+                        >
+                          Local Supplier
+                        </button>
+                      </div>
                     </div>
+                    {role === 'local_supplier' && (
+                      <>
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Business Address</label>
+                          <input
+                            required
+                            type="text"
+                            placeholder="123 Market St"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Location Name</label>
+                          <input
+                            required
+                            type="text"
+                            placeholder="e.g. Ankara Bazaar"
+                            value={locationName}
+                            onChange={(e) => setLocationName(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                          />
+                        </div>
+                      </>
+                    )}
                   </>
                 )}
 
@@ -220,7 +277,7 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
               <p className="text-center text-xs font-bold text-slate-500 mt-6">
                 {isLogin ? "Don't have an account? " : 'Already have an account? '}
                 <button
-                  onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); }}
+                  onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setRole('home_cook'); setAddress(''); setLocationName(''); }}
                   className="text-emerald-500 hover:underline"
                 >
                   {isLogin ? 'Register' : 'Log In'}
