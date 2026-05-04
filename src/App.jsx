@@ -30,7 +30,18 @@ export default function App() {
   }); // Auth State
   const [currentTab, setCurrentTab] = useState('explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
-  const [cart, setCart] = useState([]);
+
+  // Per-user cart: keyed by user ID in localStorage so carts are never shared.
+  const cartKey = user ? `cart_${user.id}` : null;
+  const [cart, setCart] = useState(() => {
+    if (!user) return [];
+    try {
+      const saved = localStorage.getItem(`cart_${user.id}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [mealLists, setMealLists] = useState([]);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -64,6 +75,27 @@ export default function App() {
     }
   }, [user?.id]);
 
+  // Reload cart from localStorage whenever the logged-in user changes
+  useEffect(() => {
+    if (user?.id) {
+      try {
+        const saved = localStorage.getItem(`cart_${user.id}`);
+        setCart(saved ? JSON.parse(saved) : []);
+      } catch {
+        setCart([]);
+      }
+    } else {
+      setCart([]);
+    }
+  }, [user?.id]);
+
+  // Persist cart to localStorage on every change
+  useEffect(() => {
+    if (cartKey) {
+      localStorage.setItem(cartKey, JSON.stringify(cart));
+    }
+  }, [cart, cartKey]);
+
   const fetchMealLists = async () => {
     try {
       const res = await fetch(`/api/meallist?userId=${user.id}`);
@@ -90,6 +122,7 @@ export default function App() {
 
   const handleCheckoutComplete = () => {
     setCart([]);
+    if (cartKey) localStorage.removeItem(cartKey);
     setCurrentTab('explore');
   };
 
@@ -100,7 +133,7 @@ export default function App() {
         activeTab={currentTab}
         setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
         cartCount={cart.length}
-        onLogout={() => { setUser(null); setCurrentTab('explore'); }}
+        onLogout={() => { if (cartKey) localStorage.removeItem(cartKey); setUser(null); setCart([]); setCurrentTab('explore'); }}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
       />

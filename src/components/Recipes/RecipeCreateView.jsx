@@ -1,25 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChefHat, Clock3, Plus, Sparkles, Trash2, UtensilsCrossed } from 'lucide-react';
 import './RecipeCreateView.css';
+import { UNIT_LABELS } from '../../utils/unitConversion';
 
 const DIFFICULTY_LEVELS = ['Easy', 'Medium', 'Hard'];
 const VISIBILITY_OPTIONS = ['public', 'private'];
 const DEFAULT_UNITS = 'kg,g,oz,cup,L,ml,tbsp,tsp,pc,pcs,adet';
-const UNIT_LABELS = {
-  kg: 'kg', g: 'g', lb: 'lb', oz: 'oz',
-  L: 'L', ml: 'ml', cup: 'cup', tbsp: 'tbsp',
-  tsp: 'tsp', pc: 'pc', pcs: 'pcs', bunch: 'bunch',
-  clove: 'clove', spear: 'spear', can: 'can', mg: 'mg', adet: 'adet'
-};
 
 // Helper to get allowed units for an ingredient
 const getUnitOptionsForIngredient = (ingredient_id, allIngredients) => {
   if (!ingredient_id) return [];
-  const ingredient = allIngredients.find(a => a.ingredient_id === parseInt(ingredient_id));
-  
-  let unitsString = ingredient?.allowed_units || DEFAULT_UNITS;
+  const ingredient = allIngredients.find(
+    a => String(a.ingredient_id) === String(ingredient_id)
+  );
+
+  const unitsString = ingredient?.allowed_units || DEFAULT_UNITS;
   const units = unitsString.split(',').map(u => u.trim());
-  
+
   return units.map(u => ({ value: u, label: UNIT_LABELS[u] || u }));
 };
 

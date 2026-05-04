@@ -918,6 +918,7 @@ app.get('/api/recipes/:id/inventory', async (req, res) => {
                         'supplier_name', su.username,
                         'location_name', ls.location_name,
                         'price', si.price,
+                        'unit', si.unit,
                         'available_qty', si.available_qty
                     ) ORDER BY si.price ASC)
                     FROM "SupplierInventory" si
@@ -938,6 +939,68 @@ app.get('/api/recipes/:id/inventory', async (req, res) => {
     } catch (error) {
         console.error('RECIPE INVENTORY API ERROR:', error);
         res.status(500).json({ message: 'Error fetching recipe inventory.', detail: error.message });
+    }
+});
+
+// =============================================================
+// AI SUBSTITUTION ENDPOINT (server-side Gemini proxy)
+// =============================================================
+app.post('/api/ai/substitute', async (req, res) => {
+    const { ingredientName, userPrompt, currentPrice } = req.body;
+    if (!ingredientName || !userPrompt) {
+        return res.status(400).json({ message: 'ingredientName and userPrompt are required.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return res.status(503).json({ message: 'AI service is not configured on this server.' });
+    }
+
+    const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
+    const prompt = `I need a substitute for ${ingredientName}. My specific request or constraint is: "${userPrompt}". Currently, the original ingredient costs $${Number(currentPrice || 0).toFixed(2)} per unit. Give me a creative and practical alternative.`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                    suggestion: { type: 'STRING' },
+                    suggestedPrice: { type: 'NUMBER' },
+                    reason: { type: 'STRING' }
+                },
+                required: ['suggestion', 'suggestedPrice', 'reason']
+            }
+        }
+    };
+
+    const delays = [1000, 2000, 4000];
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const geminiRes = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!geminiRes.ok) {
+                const errText = await geminiRes.text();
+                throw new Error(`Gemini API error ${geminiRes.status}: ${errText}`);
+            }
+            const data = await geminiRes.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('Empty response from Gemini');
+            const parsed = JSON.parse(text);
+            return res.json(parsed);
+        } catch (err) {
+            console.error(`[AI Substitute] Attempt ${attempt + 1} failed:`, err.message);
+            if (attempt === 3) {
+                return res.status(502).json({ message: `AI service failed: ${err.message}` });
+            }
+            await new Promise(r => setTimeout(r, delays[attempt]));
+        }
     }
 });
 
@@ -1167,20 +1230,18 @@ app.post('/api/checkout', async (req, res) => {
                         
                         console.log(`    - Processing: ${ing.name} | Deducting ${qtyToDeduct} from "${inv.location_name}"`);
 
-                        if (newQty <= 0) {
-                            // STOK BİTTİ -> SİL
-                            await client.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inv.inventory_id]);
-                            console.log(`      ✓ Stock reached 0. Item REMOVED from inventory.`);
-                        } else {
-                            // STOK VAR -> GÜNCELLE
-                            await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
-                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
-                        }
-
                         await client.query(
                             'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
                             [cartId, inv.inventory_id, qtyToDeduct, inv.price]
                         );
+
+                        // Always UPDATE (never DELETE) to preserve FK references from CartItem
+                        await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
+                        if (newQty <= 0) {
+                            console.log(`      ✓ Stock reached 0. Item marked as out of stock.`);
+                        } else {
+                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
+                        }
                     }
                 }
             }

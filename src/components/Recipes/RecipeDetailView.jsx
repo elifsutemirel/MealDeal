@@ -1,21 +1,48 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send } from 'lucide-react';
-import { fetchGeminiWithBackoff } from '../../utils/geminiApi';
+import { getPricePerRecipeUnit, canSupplierFulfill, areUnitsCompatible, convertAmount } from '../../utils/unitConversion';
 
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
   const mapIngredientsWithSelection = (nextIngredients, previousIngredients = []) => {
     const previousById = new Map(previousIngredients.map(i => [i.id?.toString(), i]));
 
     return (nextIngredients || []).map(i => {
-      const normalizedSuppliers = (i.suppliers || []).map((s, idx) =>
-        typeof s === 'object' ? s : { id: `mock-${idx}`, location_name: s, price: i.pricePerUnit || 0 }
-      );
-      const sortedSuppliers = [...normalizedSuppliers].sort((a, b) => (a.price || 0) - (b.price || 0));
+      // Normalise and enrich each supplier with conversion data
+      const normalizedSuppliers = (i.suppliers || []).map((s, idx) => {
+        if (typeof s !== 'object') {
+          // Legacy mock string supplier — treat as same unit as recipe
+          return {
+            id: `mock-${idx}`,
+            location_name: s,
+            price: i.pricePerUnit || 0,
+            unit: i.unit,
+            available_qty: Infinity,
+            convertedPrice: i.pricePerUnit || 0,
+          };
+        }
+        const supUnit = s.unit || i.unit;
+        const convertedPrice = getPricePerRecipeUnit(s.price || 0, supUnit, i.unit);
+        const availableInRecipeUnit =
+          convertedPrice !== null
+            ? convertAmount(s.available_qty || 0, supUnit, i.unit) ?? 0
+            : 0;
+        return { ...s, unit: supUnit, convertedPrice, availableInRecipeUnit };
+      });
+
+      // Sort compatible suppliers cheapest first (by price per recipe unit)
+      const compatibleSuppliers = normalizedSuppliers
+        .filter(s => s.convertedPrice !== null)
+        .sort((a, b) => (a.convertedPrice || 0) - (b.convertedPrice || 0));
 
       const existing = previousById.get(i.id?.toString());
-      const existingSelectedInventoryId = existing?.selectedInventoryId != null ? existing.selectedInventoryId.toString() : null;
-      const hasExistingSupplier = existingSelectedInventoryId && sortedSuppliers.some(s => (s.inventory_id || s.id)?.toString() === existingSelectedInventoryId);
-      const fallbackSupplier = sortedSuppliers[0];
+      const existingSelectedInventoryId =
+        existing?.selectedInventoryId != null ? existing.selectedInventoryId.toString() : null;
+      const hasExistingSupplier =
+        existingSelectedInventoryId &&
+        compatibleSuppliers.some(
+          s => (s.inventory_id || s.id)?.toString() === existingSelectedInventoryId
+        );
+      const fallbackSupplier = compatibleSuppliers[0];
 
       return {
         ...i,
@@ -24,9 +51,10 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         selectedInventoryId: hasExistingSupplier
           ? existingSelectedInventoryId
           : (fallbackSupplier?.inventory_id || fallbackSupplier?.id || null),
+        // currentPrice = price per 1 recipe-unit (already converted)
         currentPrice: hasExistingSupplier
-          ? (existing?.currentPrice ?? fallbackSupplier?.price ?? i.pricePerUnit ?? 0)
-          : (fallbackSupplier?.price ?? i.pricePerUnit ?? 0)
+          ? (existing?.currentPrice ?? fallbackSupplier?.convertedPrice ?? i.pricePerUnit ?? 0)
+          : (fallbackSupplier?.convertedPrice ?? i.pricePerUnit ?? 0),
       };
     });
   };
@@ -74,9 +102,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         console.log(`[RecipeDetail] Received inventory for recipe ${recipe.id}:`, data);
         if (!isMounted || !Array.isArray(data.ingredients)) return;
 
-        const updatedIngredients = mapIngredientsWithSelection(data.ingredients, prev);
-        console.log(`[RecipeDetail] Updated ingredients state:`, updatedIngredients);
-        setIngredientsState(updatedIngredients);
+        setIngredientsState(prev => mapIngredientsWithSelection(data.ingredients, prev));
       } catch (err) {
         console.error('Failed to sync recipe inventory:', err);
       }
@@ -126,14 +152,38 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const scaleFactor = servings / (recipe.base_servings || 2);
 
   const selectedTotal = useMemo(() => {
-    return ingredientsState
-      .filter(i => i.selected)
-      .reduce((total, i) => total + (i.currentPrice * (i.baseQty * scaleFactor)), 0);
+    return ingredientsState.filter(i => i.selected).reduce((total, i) => {
+      const required = i.baseQty * scaleFactor;
+      // Only count suppliers that can fulfill the scaled quantity
+      const validSuppliers = (i.suppliers || [])
+        .filter(s =>
+          s.convertedPrice != null &&
+          canSupplierFulfill(s.available_qty || 0, s.unit || i.unit, required, i.unit)
+        )
+        .sort((a, b) => (a.convertedPrice || 0) - (b.convertedPrice || 0));
+      if (validSuppliers.length === 0) return total;
+      // Prefer the selected supplier; fall back to cheapest valid one
+      const chosen =
+        validSuppliers.find(
+          s => (s.inventory_id || s.id)?.toString() === i.selectedInventoryId?.toString()
+        ) || validSuppliers[0];
+      return total + chosen.convertedPrice * required;
+    }, 0);
   }, [ingredientsState, scaleFactor]);
 
   const missingIngredientsCount = useMemo(() => {
-    return ingredientsState.filter(i => i.selected && (!i.suppliers || i.suppliers.length === 0)).length;
-  }, [ingredientsState]);
+    return ingredientsState.filter(i => {
+      if (!i.selected) return false;
+      const required = i.baseQty * scaleFactor;
+      return (
+        (i.suppliers || []).filter(
+          s =>
+            s.convertedPrice != null &&
+            canSupplierFulfill(s.available_qty || 0, s.unit || i.unit, required, i.unit)
+        ).length === 0
+      );
+    }).length;
+  }, [ingredientsState, scaleFactor]);
 
   const handleToggleIngredient = (id) => {
     setIngredientsState(prev => prev.map(i => i.id === id ? { ...i, selected: !i.selected } : i));
@@ -145,18 +195,28 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     setAiResult(null);
   };
 
-  // GEMINI API INTEGRATION
+  // GEMINI API INTEGRATION (proxied through /api/ai/substitute)
   const handleGenerateAISub = async () => {
     setAiLoading(true);
     try {
-      const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
       const pricePerUnit = Number(aiTargetIngredient.pricePerUnit) || Number(aiTargetIngredient.currentPrice) || 0;
-      const prompt = `I need a substitute for ${aiTargetIngredient.name}. My specific request or constraint is: "${aiPrompt}". Currently, the original ingredient costs $${pricePerUnit.toFixed(2)} per unit. Give me a creative and practical alternative.`;
 
-      console.log('[AI] Requesting substitution for:', aiTargetIngredient.name, 'with prompt:', aiPrompt);
-      const result = await fetchGeminiWithBackoff(prompt, systemPrompt);
-      console.log('[AI] Received result:', result);
+      const res = await fetch('/api/ai/substitute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredientName: aiTargetIngredient.name,
+          userPrompt: aiPrompt,
+          currentPrice: pricePerUnit
+        })
+      });
 
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `Server error ${res.status}`);
+      }
+
+      const result = await res.json();
       setAiResult({
         targetId: aiTargetIngredient.id,
         original: aiTargetIngredient.name,
@@ -166,7 +226,6 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
       });
     } catch (error) {
       console.error("AI Substitution failed:", error);
-      // Fallback in case API key is missing or call fails
       setAiResult({
         targetId: aiTargetIngredient.id,
         original: aiTargetIngredient.name,
@@ -343,8 +402,8 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       </div>
                     </div>
                     <div className="flex items-center gap-4 text-right">
-                      {/* Interactive AI Suggestion Button per Ingredient (only if missing and logged in) */}
-                      {user && (!ing.suppliers || ing.suppliers.length === 0) && (
+                      {/* AI Suggestion Button — shown when no valid supplier can fulfill */}
+                      {user && (
                         <button
                           onClick={() => handleRequestAI(ing)}
                           className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 rounded-full transition-colors flex items-center justify-center shadow-sm"
@@ -354,39 +413,59 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                         </button>
                       )}
 
-                      <div className="w-32 flex flex-col items-end gap-1">
-                        <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(1)} {ing.unit}</p>
-                        {user && ing.suppliers && ing.suppliers.length > 0 && (
-                          <div className="mt-2 w-full flex flex-wrap justify-end gap-1.5">
-                            {ing.suppliers.map((sup) => {
-                              const supplierId = sup.inventory_id || sup.id;
-                              if (!supplierId) return null;
-                              const isSelected = (ing.selectedInventoryId || '').toString() === supplierId.toString();
-                              return (
-                                <button
-                                  key={supplierId}
-                                  onClick={() => {
-                                    const val = supplierId.toString();
-                                    const newPrice = Number(sup.price) || Number(ing.currentPrice) || 0;
-                                    setIngredientsState(prev => prev.map(p => p.id === ing.id ? { ...p, selectedInventoryId: val, currentPrice: newPrice } : p));
-                                  }}
-                                  className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${
-                                    isSelected 
-                                      ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm' 
-                                      : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-500'
-                                  }`}
-                                >
-                                  {sup.location_name || sup.supplier_name || sup.name}
-                                  {sup.price !== undefined && ` • $${Number(sup.price).toFixed(2)}`}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {user && (!ing.suppliers || ing.suppliers.length === 0) && (
-                          <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
-                            Missing
-                          </div>
+                      <div className="w-48 flex flex-col items-end gap-1">
+                        <p className="font-black text-slate-900 dark:text-white">{(ing.baseQty * scaleFactor).toFixed(2)} {ing.unit}</p>
+                        {user && (() => {
+                          const required = ing.baseQty * scaleFactor;
+                          // Only show suppliers that have compatible units AND enough stock
+                          const validSuppliers = (ing.suppliers || []).filter(
+                            s => s.convertedPrice != null &&
+                                 canSupplierFulfill(s.available_qty || 0, s.unit || ing.unit, required, ing.unit)
+                          );
+                          if (validSuppliers.length === 0) {
+                            return (
+                              <div className="px-2 py-1 bg-red-50 dark:bg-red-900/20 text-red-600 border border-red-200 dark:border-red-800 rounded-lg text-[9px] font-black uppercase tracking-widest mt-1 text-center">
+                                No supplier available
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="mt-2 w-full flex flex-wrap justify-end gap-1.5">
+                              {validSuppliers.map(sup => {
+                                const supplierId = sup.inventory_id || sup.id;
+                                if (!supplierId) return null;
+                                const isSelected = (ing.selectedInventoryId || '').toString() === supplierId.toString();
+                                // Total cost for this ingredient at current serving size
+                                const totalCost = sup.convertedPrice * required;
+                                return (
+                                  <button
+                                    key={supplierId}
+                                    onClick={() => {
+                                      setIngredientsState(prev =>
+                                        prev.map(p =>
+                                          p.id === ing.id
+                                            ? { ...p, selectedInventoryId: supplierId.toString(), currentPrice: sup.convertedPrice }
+                                            : p
+                                        )
+                                      );
+                                    }}
+                                    className={`px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all border ${
+                                      isSelected
+                                        ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                                        : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-emerald-500/50 hover:text-emerald-500'
+                                    }`}
+                                    title={`$${sup.convertedPrice.toFixed(4)}/${ing.unit} (supplier sells in ${sup.unit})`}
+                                  >
+                                    {sup.location_name || sup.supplier_name || sup.name}
+                                    {` • $${totalCost.toFixed(2)}`}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                        {!user && (
+                          <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">Sign in to see prices</p>
                         )}
                       </div>
                     </div>

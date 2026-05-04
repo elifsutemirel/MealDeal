@@ -1,21 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
+import { UNIT_LABELS } from '../../utils/unitConversion';
 
 // Helper to get allowed units for an ingredient by name
 const getUnitOptionsForIngredient = (ingredient_name, allIngredients) => {
   if (!ingredient_name) return [];
   const ingredient = allIngredients.find(a => a.name.toLowerCase() === ingredient_name.toLowerCase());
   if (!ingredient || !ingredient.allowed_units) return [];
-  
-  const units = ingredient.allowed_units.split(',');
-  const unitLabels = {
-    kg: 'kg (Kilogram)', g: 'g (Gram)', lb: 'lb (Pound)', oz: 'oz (Ounce)',
-    L: 'L (Liter)', ml: 'ml (Milliliter)', cup: 'cup', tbsp: 'tbsp (Tablespoon)',
-    tsp: 'tsp (Teaspoon)', pc: 'pc (Piece)', pcs: 'pcs (Pieces)', bunch: 'bunch',
-    clove: 'clove', spear: 'spear', can: 'can', mg: 'mg (Milligram)'
-  };
-  
-  return units.map(u => ({ value: u, label: unitLabels[u] || u }));
+  const units = ingredient.allowed_units.split(',').map(u => u.trim());
+  return units.map(u => ({ value: u, label: UNIT_LABELS[u] || u }));
 };
 
 const InventoryRow = ({ item, onUpdate, onDelete }) => {
@@ -181,16 +174,16 @@ export const SupplierInventoryView = ({ user }) => {
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ingredient</label>
-              <input
-                list="ingredients-list"
+              <select
                 value={newItem.ingredient_name}
-                onChange={e => setNewItem({ ...newItem, ingredient_name: e.target.value })}
-                placeholder="Type or select..."
+                onChange={e => setNewItem({ ...newItem, ingredient_name: e.target.value, unit: '' })}
                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 transition-all outline-none"
-              />
-              <datalist id="ingredients-list">
-                {allIngredients.map(i => <option key={i.ingredient_id} value={i.name} />)}
-              </datalist>
+              >
+                <option value="">— Select ingredient —</option>
+                {allIngredients.map(i => (
+                  <option key={i.ingredient_id} value={i.name}>{i.name}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price ($)</label>
