@@ -60,7 +60,15 @@ const INGREDIENT_POOL = [
 // ============================================================
 // RECIPES + their ingredient links
 // ============================================================
-const RECIPES = [
+const RECIPES = [];
+
+// ============================================================
+// SUPPLIERS
+// ============================================================
+const SUPPLIERS = [];
+
+// PLACEHOLDER - removed to avoid compilation error
+const REMOVED_RECIPES = [
   {
     title: 'Organic Harvest Bowl',
     chef_username: 'chef_aybegum',
@@ -189,34 +197,7 @@ const RECIPES = [
   },
 ];
 
-// Which ingredient IDs each supplier carries
-const SUPPLIERS = [
-  {
-    username: 'bilkent_hub',
-    email: 'bilkent@mealdeal.com',
-    password: 'password123',
-    address: 'Bilkent Üniversitesi Kampüsü, Çankaya, Ankara',
-    location_name: 'Bilkent Hub',
-    // carries most things except the rare/specialty ones
-    carries: [1,2,5,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,24,25,26,29,30,31,32,33,34,35,36,37],
-  },
-  {
-    username: 'tunali_fresh',
-    email: 'tunali@mealdeal.com',
-    password: 'password123',
-    address: 'Tunalı Hilmi Cad. No:45, Kavaklıdere, Ankara',
-    location_name: 'Tunali Fresh',
-    carries: [1,2,5,6,7,8,9,10,11,12,13,14,16,18,19,22,24,25,26,29,30,31,32,33,36,37],
-  },
-  {
-    username: 'bahcelievler_market',
-    email: 'bahcelievler@mealdeal.com',
-    password: 'password123',
-    address: 'Bahçelievler Mah. Beşevler Cad. No:12, Ankara',
-    location_name: 'Bahcelievler Market',
-    carries: [4,17,28,3,7,18,25,26,30,32,37],
-  },
-];
+
 
 async function seedAll() {
   const client = await pool.connect();
@@ -240,13 +221,22 @@ async function seedAll() {
     await client.query(`SELECT setval(pg_get_serial_sequence('"Ingredient"', 'ingredient_id'), (SELECT MAX(ingredient_id) FROM "Ingredient"))`);
     console.log(`  ✓ Seeded ${INGREDIENT_POOL.length} ingredients.`);
 
-    // 2. Seed Supplier Users
-    console.log('\n[2/5] Seeding supplier users...');
-    const bcrypt = require('bcryptjs');
-    const supplierIds = [];
+    // Done - skipping suppliers and recipes
+    await client.query('COMMIT');
+    console.log('\n[2/2] ✅ Ingredients seeded successfully!');
+    console.log('\nNote: No mock suppliers or recipes were added.');
 
-    for (const sup of SUPPLIERS) {
-      const hash = await bcrypt.hash(sup.password, 10);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('\n❌ Seed failed:', err.message);
+    console.error(err.stack);
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+seedAll();
       // Check if user exists
       const existing = await client.query('SELECT user_id FROM "User" WHERE username = $1', [sup.username]);
       let userId;

@@ -18,7 +18,8 @@ const verifiedChefUploadDir = join(uploadsRoot, 'verified-chef-applications');
 fs.mkdirSync(verifiedChefUploadDir, { recursive: true });
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors());
 
 // Simple logging middleware
@@ -733,7 +734,7 @@ app.delete('/api/admin/comments/:commentId', async (req, res) => {
 
 // CREATE Recipe
 app.post('/api/recipes', async (req, res) => {
-    const { creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, ingredients } = req.body;
+    const { creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, visibility, ingredients } = req.body;
 
     let client;
     try {
@@ -742,8 +743,8 @@ app.post('/api/recipes', async (req, res) => {
 
         // Insert Recipe
         const recipeResult = await client.query(`
-            INSERT INTO "Recipe" (creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO "Recipe" (creator_id, title, description, preparation_steps, media_url, cook_time_min, difficulty_level, dietary_tag, base_servings, visibility)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING recipe_id;
         `, [
             creator_id,
@@ -754,7 +755,8 @@ app.post('/api/recipes', async (req, res) => {
             cook_time_min,
             difficulty_level,
             dietary_tag || null,
-            base_servings || 1
+            base_servings || 1,
+            visibility || 'public'
         ]);
 
         const recipeId = recipeResult.rows[0].recipe_id;
@@ -764,13 +766,20 @@ app.post('/api/recipes', async (req, res) => {
             for (const ing of ingredients) {
                 let actualIngredientId = ing.ingredient_id;
 
-                // Ensure ingredient exists in local DB
-                const existingCheck = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name = $1', [ing.name]);
+                // Ensure ingredient exists in local DB (case-insensitive)
+                const ingredientName = (ing.name || '').trim();
+                const existingCheck = await client.query('SELECT ingredient_id, allowed_units FROM "Ingredient" WHERE name ILIKE $1', [ingredientName]);
                 if (existingCheck.rows.length > 0) {
                     actualIngredientId = existingCheck.rows[0].ingredient_id;
+                    
+                    // Validate unit is allowed (trim spaces)
+                    const allowedUnits = existingCheck.rows[0].allowed_units.split(',').map(u => u.trim());
+                    if (!allowedUnits.includes(ing.unit.trim())) {
+                        throw new Error(`Invalid unit "${ing.unit}" for ingredient "${ingredientName}". Allowed units: ${existingCheck.rows[0].allowed_units}`);
+                    }
                 } else {
-                    // Insert the external ingredient
-                    const newIng = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ing.name]);
+                    // Insert the external ingredient with default allowed units (including adet)
+                    const newIng = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredientName, 'kg,g,pc,adet,L,ml,tbsp,tsp,oz,cup']);
                     actualIngredientId = newIng.rows[0].ingredient_id;
                 }
 
@@ -1101,6 +1110,41 @@ app.get('/api/ingredients/search', async (req, res) => {
     }
 });
 
+// GET /api/ingredients/suppliers - Find suppliers for a specific ingredient by name
+app.get('/api/ingredients/suppliers', async (req, res) => {
+    const ingredientName = req.query.name;
+    if (!ingredientName) {
+        return res.status(400).json({ message: 'Ingredient name is required' });
+    }
+
+    try {
+        const query = `
+            SELECT 
+                si.inventory_id,
+                ls.user_id AS supplier_id,
+                u.username AS supplier_name,
+                ls.location_name,
+                i.ingredient_id,
+                i.name AS ingredient_name,
+                si.unit,
+                si.price,
+                si.package_size,
+                si.available_qty
+            FROM "SupplierInventory" si
+            JOIN "Ingredient" i ON i.ingredient_id = si.ingredient_id
+            JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+            JOIN "User" u ON u.user_id = ls.user_id
+            WHERE i.name ILIKE $1 AND si.available_qty > 0
+            ORDER BY si.price ASC;
+        `;
+        const result = await pool.query(query, [ingredientName]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('INGREDIENT SUPPLIERS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching ingredient suppliers.' });
+    }
+});
+
 // GET Supplier Marketplace (All suppliers and their inventory)
 app.get('/api/marketplace', async (req, res) => {
     try {
@@ -1169,15 +1213,29 @@ app.post('/api/supplier/inventory', async (req, res) => {
         await client.query('BEGIN');
 
         // Check if ingredient exists
-        let ingRes = await client.query('SELECT ingredient_id FROM "Ingredient" WHERE name ILIKE $1', [ingredient_name.trim()]);
+        let ingRes = await client.query('SELECT ingredient_id, allowed_units FROM "Ingredient" WHERE name ILIKE $1', [ingredient_name.trim()]);
         let ingredientId;
+        let allowedUnits;
 
         if (ingRes.rows.length > 0) {
             ingredientId = ingRes.rows[0].ingredient_id;
+            allowedUnits = ingRes.rows[0].allowed_units;
+            console.log(`FOUND EXISTING INGREDIENT: "${ingredient_name.trim()}" with ID ${ingredientId}, allowed units: ${allowedUnits}`);
+            
+            // Validate unit
+            const allowedUnitsArray = allowedUnits.split(',');
+            if (!allowedUnitsArray.includes(unit)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ 
+                    message: `Invalid unit "${unit}" for ingredient "${ingredient_name.trim()}". Allowed units: ${allowedUnits}`,
+                    allowedUnits: allowedUnitsArray
+                });
+            }
         } else {
-            // Create new ingredient
-            let newIngRes = await client.query('INSERT INTO "Ingredient" (name) VALUES ($1) RETURNING ingredient_id', [ingredient_name.trim()]);
+            // Create new ingredient with default allowed units
+            let newIngRes = await client.query('INSERT INTO "Ingredient" (name, allowed_units) VALUES ($1, $2) RETURNING ingredient_id', [ingredient_name.trim(), 'kg,g,pc']);
             ingredientId = newIngRes.rows[0].ingredient_id;
+            console.log(`CREATED NEW INGREDIENT: "${ingredient_name.trim()}" with ID ${ingredientId}`);
         }
 
         // Insert into SupplierInventory
@@ -1187,6 +1245,7 @@ app.post('/api/supplier/inventory', async (req, res) => {
             RETURNING *;
         `;
         const result = await client.query(query, [supplier_id, ingredientId, unit, price, package_size, available_qty]);
+        console.log(`ADDED INVENTORY: Supplier ${supplier_id}, Ingredient ${ingredientId} (${ingredient_name.trim()}), Qty: ${available_qty}`);
 
         await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
@@ -1334,6 +1393,8 @@ app.get('/api/recipes', async (req, res) => {
             SELECT
                 r.recipe_id AS id,
                 r.title,
+                r.description,
+                r.preparation_steps,
                 u.username AS chef,
                 r.dietary_tag AS category,
                 r.cook_time_min AS time,
@@ -1346,9 +1407,9 @@ app.get('/api/recipes', async (req, res) => {
                         'name', i.name,
                         'baseQty', ri.qty,
                         'unit', ri.unit,
-                        'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0.10),
+                                                'pricePerUnit', COALESCE((SELECT MIN(price) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id AND available_qty > 0), 0.10),
                         'status', CASE 
-                                    WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id), 0) > 0 THEN 'available'
+                                                                        WHEN COALESCE((SELECT SUM(available_qty) FROM "SupplierInventory" WHERE ingredient_id = i.ingredient_id AND available_qty > 0), 0) > 0 THEN 'available'
                                     ELSE 'missing' 
                                   END,
                         'suppliers', (
@@ -1363,7 +1424,8 @@ app.get('/api/recipes', async (req, res) => {
                             FROM "SupplierInventory" si
                             JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                             JOIN "User" su ON su.user_id = ls.user_id
-                            WHERE si.ingredient_id = i.ingredient_id
+                                                        WHERE si.ingredient_id = i.ingredient_id
+                                                            AND si.available_qty > 0
                         )
                     )), '[]'::json)
                     FROM "Recipe_Ingredient" ri
@@ -1392,14 +1454,18 @@ app.get('/api/recipes', async (req, res) => {
         const recipes = result.rows.map((row, index) => ({
             id: row.id,
             title: row.title,
+            description: row.description,
             chef: row.chef,
             rating: parseFloat(row.rating),
             time: row.time,
             difficulty: row.difficulty,
             category: row.category,
+            base_servings: row.base_servings,
             image: MOCK_IMAGES[index % MOCK_IMAGES.length],
             ingredients: row.ingredients,
-            steps: ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
+            steps: row.preparation_steps
+                ? row.preparation_steps.split('\n').map(s => s.trim()).filter(Boolean)
+                : ['Prepare ingredients.', 'Cook according to best practices.', 'Serve and enjoy!'],
             substitutions: [],
             reviews: []
         }));
@@ -1434,6 +1500,120 @@ app.get('/api/recipes', async (req, res) => {
     } catch (error) {
         console.error('RECIPES API ERROR:', error);
         res.status(500).json({ message: 'Error fetching recipes.', detail: error.message });
+    }
+});
+
+// GET /api/recipes/:id/inventory — live ingredient supplier availability for recipe detail screen
+app.get('/api/recipes/:id/inventory', async (req, res) => {
+    const recipeId = req.params.id;
+    console.log(`FETCHING INVENTORY FOR RECIPE ${recipeId}`);
+    try {
+        const recipeExists = await pool.query('SELECT recipe_id FROM "Recipe" WHERE recipe_id = $1 LIMIT 1', [recipeId]);
+        if (recipeExists.rows.length === 0) {
+            return res.status(404).json({ message: 'Recipe not found.' });
+        }
+
+        const query = `
+            SELECT COALESCE(json_agg(json_build_object(
+                'id', i.ingredient_id,
+                'name', i.name,
+                'baseQty', ri.qty,
+                'unit', ri.unit,
+                'pricePerUnit', COALESCE((
+                    SELECT MIN(si_min.price)
+                    FROM "SupplierInventory" si_min
+                    WHERE si_min.ingredient_id = i.ingredient_id AND si_min.available_qty > 0
+                ), 0.10),
+                'suppliers', COALESCE((
+                    SELECT json_agg(json_build_object(
+                        'inventory_id', si.inventory_id,
+                        'supplier_id', su.user_id,
+                        'supplier_name', su.username,
+                        'location_name', ls.location_name,
+                        'price', si.price,
+                        'unit', si.unit,
+                        'available_qty', si.available_qty
+                    ) ORDER BY si.price ASC)
+                    FROM "SupplierInventory" si
+                    JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
+                    JOIN "User" su ON su.user_id = ls.user_id
+                    WHERE si.ingredient_id = i.ingredient_id
+                      AND si.available_qty > 0
+                ), '[]'::json)
+            )), '[]'::json) AS ingredients
+            FROM "Recipe_Ingredient" ri
+            JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
+            WHERE ri.recipe_id = $1;
+        `;
+
+        const result = await pool.query(query, [recipeId]);
+        console.log(`RECIPE ${recipeId} INVENTORY:`, JSON.stringify(result.rows[0]?.ingredients, null, 2));
+        res.json({ recipe_id: Number(recipeId), ingredients: result.rows[0]?.ingredients || [] });
+    } catch (error) {
+        console.error('RECIPE INVENTORY API ERROR:', error);
+        res.status(500).json({ message: 'Error fetching recipe inventory.', detail: error.message });
+    }
+});
+
+// =============================================================
+// AI SUBSTITUTION ENDPOINT (server-side Gemini proxy)
+// =============================================================
+app.post('/api/ai/substitute', async (req, res) => {
+    const { ingredientName, userPrompt, currentPrice } = req.body;
+    if (!ingredientName || !userPrompt) {
+        return res.status(400).json({ message: 'ingredientName and userPrompt are required.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return res.status(503).json({ message: 'AI service is not configured on this server.' });
+    }
+
+    const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
+    const prompt = `I need a substitute for ${ingredientName}. My specific request or constraint is: "${userPrompt}". Currently, the original ingredient costs $${Number(currentPrice || 0).toFixed(2)} per unit. Give me a creative and practical alternative.`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                    suggestion: { type: 'STRING' },
+                    suggestedPrice: { type: 'NUMBER' },
+                    reason: { type: 'STRING' }
+                },
+                required: ['suggestion', 'suggestedPrice', 'reason']
+            }
+        }
+    };
+
+    const delays = [1000, 2000, 4000];
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const geminiRes = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!geminiRes.ok) {
+                const errText = await geminiRes.text();
+                throw new Error(`Gemini API error ${geminiRes.status}: ${errText}`);
+            }
+            const data = await geminiRes.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error('Empty response from Gemini');
+            const parsed = JSON.parse(text);
+            return res.json(parsed);
+        } catch (err) {
+            console.error(`[AI Substitute] Attempt ${attempt + 1} failed:`, err.message);
+            if (attempt === 3) {
+                return res.status(502).json({ message: `AI service failed: ${err.message}` });
+            }
+            await new Promise(r => setTimeout(r, delays[attempt]));
+        }
     }
 });
 
@@ -1596,6 +1776,24 @@ app.delete('/api/meallist/:id', async (req, res) => {
 app.post('/api/checkout', async (req, res) => {
     const { userId, totalAmount, items } = req.body;
 
+    // Unit conversion helper (mirrors src/utils/unitConversion.js)
+    const UNIT_GROUPS_SERVER = {
+        weight: { units: ['kg','g','mg','lb','oz'], toBase: { kg:1000, g:1, mg:0.001, lb:453.592, oz:28.3495 } },
+        volume: { units: ['L','ml','cup','tbsp','tsp'], toBase: { L:1000, ml:1, cup:236.588, tbsp:14.7868, tsp:4.92892 } },
+        count:  { units: ['pc','pcs','bunch','clove','spear','can','adet'], toBase: { pc:1, pcs:1, bunch:1, clove:1, spear:1, can:1, adet:1 } },
+    };
+    function convertAmount(amount, fromUnit, toUnit) {
+        if (!fromUnit || !toUnit || fromUnit === toUnit) return amount;
+        for (const [groupName, group] of Object.entries(UNIT_GROUPS_SERVER)) {
+            if (group.units.includes(fromUnit) && group.units.includes(toUnit)) {
+                if (groupName === 'count' && fromUnit !== toUnit) return null;
+                const base = amount * group.toBase[fromUnit];
+                return base / group.toBase[toUnit];
+            }
+        }
+        return null; // incompatible units
+    }
+
     // In a real scenario, we would use the session userId. Here we default to 1 for dummy testing.
     const effectiveUserId = userId || 1;
 
@@ -1609,23 +1807,6 @@ app.post('/api/checkout', async (req, res) => {
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
-        // 2. Deduct Supplier Inventory
-        if (items && items.length > 0) {
-            for (const item of items) {
-                const scaleFactor = item.recipe.isIngredientOnly ? item.servings : item.servings / 2;
-                const ingredients = item.recipe.cartIngredients || [];
-                for (const ing of ingredients) {
-                    if (ing.selectedSupplier && ing.selectedSupplier.inventory_id) {
-                        const deduction = ing.baseQty * scaleFactor;
-                        await client.query(
-                            'UPDATE "SupplierInventory" SET available_qty = GREATEST(0, available_qty - $1) WHERE inventory_id = $2',
-                            [deduction, ing.selectedSupplier.inventory_id]
-                        );
-                        console.log(`[Checkout] Deducted ${deduction} from inventory ${ing.selectedSupplier.inventory_id}`);
-                    }
-                }
-            }
-        }
         // 2. Create Cart
         const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
         const cartId = cartRes.rows[0].cart_id;
@@ -1636,7 +1817,12 @@ app.post('/api/checkout', async (req, res) => {
             
             for (const cartEntry of items) {
                 const ingredients = cartEntry.recipe.cartIngredients || [];
-                const servingsFactor = Number(cartEntry.servings || 2) / 2;
+                // For direct marketplace items (isIngredientOnly), baseQty=1 and servings=qty bought.
+                // For recipe items, scale by servings / base_servings.
+                const isIngredientOnly = !!cartEntry.recipe.isIngredientOnly;
+                const servingsFactor = isIngredientOnly
+                    ? Number(cartEntry.servings || 1)
+                    : Number(cartEntry.servings || 2) / Number(cartEntry.recipe.base_servings || 2);
 
                 for (const ing of ingredients) {
                     const rawId = ing.id;
@@ -1650,7 +1836,7 @@ app.post('/api/checkout', async (req, res) => {
                     // Eğer kullanıcı spesifik bir envanter (tedarikçi) seçmişse onu kullan
                     if (ing.selectedInventoryId) {
                         invRes = await client.query(
-                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty, si.unit
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                              WHERE si.inventory_id = $1 AND si.available_qty > 0`, 
@@ -1659,7 +1845,7 @@ app.post('/api/checkout', async (req, res) => {
                     } else {
                         // Seçmemişse en ucuzunu bul
                         invRes = await client.query(
-                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty, si.unit
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                              WHERE si.ingredient_id = $1 AND si.available_qty > 0 
@@ -1670,25 +1856,36 @@ app.post('/api/checkout', async (req, res) => {
                     
                     if (invRes.rows.length > 0) {
                         const inv = invRes.rows[0];
-                        const qtyToDeduct = Number(ing.baseQty || 1) * servingsFactor;
+                        const recipeQty = Number(ing.baseQty || 1) * servingsFactor;
+                        const recipeUnit = (ing.unit || '').trim();
+                        const supplierUnit = (inv.unit || '').trim();
+
+                        // Convert recipe quantity into supplier's unit before deducting
+                        let qtyToDeduct = recipeQty;
+                        if (recipeUnit && supplierUnit && recipeUnit !== supplierUnit) {
+                            const converted = convertAmount(recipeQty, recipeUnit, supplierUnit);
+                            if (converted !== null) {
+                                qtyToDeduct = converted;
+                            }
+                            // If units are incompatible (e.g. kg vs L), fall back to raw qty
+                        }
+
                         const newQty = Math.max(0, Number(inv.available_qty) - qtyToDeduct);
                         
-                        console.log(`    - Processing: ${ing.name} | Deducting ${qtyToDeduct} from "${inv.location_name}"`);
-
-                        if (newQty <= 0) {
-                            // STOK BİTTİ -> SİL
-                            await client.query('DELETE FROM "SupplierInventory" WHERE inventory_id = $1', [inv.inventory_id]);
-                            console.log(`      ✓ Stock reached 0. Item REMOVED from inventory.`);
-                        } else {
-                            // STOK VAR -> GÜNCELLE
-                            await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
-                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
-                        }
+                        console.log(`    - Processing: ${ing.name} | ${recipeQty} ${recipeUnit} → ${qtyToDeduct} ${supplierUnit} deducted from "${inv.location_name}" (had ${inv.available_qty} ${supplierUnit})`);
 
                         await client.query(
                             'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
                             [cartId, inv.inventory_id, qtyToDeduct, inv.price]
                         );
+
+                        // Always UPDATE (never DELETE) to preserve FK references from CartItem
+                        await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
+                        if (newQty <= 0) {
+                            console.log(`      ✓ Stock reached 0. Item marked as out of stock.`);
+                        } else {
+                            console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
+                        }
                     }
                 }
             }
@@ -1746,6 +1943,9 @@ app.get('/api/challenges', async (req, res) => {
                 kc.description,
                 kc.start_date,
                 kc.end_date,
+                kc.creator_id,
+                kc.winner_id,
+                u_winner.username AS winner_name,
                 COUNT(DISTINCT hcc.user_id)       AS participants,
                 COUNT(DISTINCT kcr.recipe_id)     AS recipe_count,
                 CASE
@@ -1756,7 +1956,8 @@ app.get('/api/challenges', async (req, res) => {
             FROM "KitchenChallenge" kc
             LEFT JOIN "HomeCook_Challenge"      hcc ON hcc.challenge_id = kc.challenge_id
             LEFT JOIN "KitchenChallenge_Recipe" kcr ON kcr.challenge_id = kc.challenge_id
-            GROUP BY kc.challenge_id
+            LEFT JOIN "User" u_winner ON u_winner.user_id = kc.winner_id
+            GROUP BY kc.challenge_id, u_winner.username
             ORDER BY kc.start_date DESC;
         `);
 
@@ -1780,35 +1981,6 @@ app.get('/api/challenges', async (req, res) => {
     } catch (error) {
         console.error('CHALLENGES LIST ERROR:', error);
         res.status(500).json({ message: 'Error fetching challenges.', detail: error.message });
-    }
-});
-
-// POST /api/challenges - Verified Chef-only challenge creation
-app.post('/api/challenges', async (req, res) => {
-    const { userId, title, description, start_date, end_date } = req.body;
-    if (!userId || !title || !description || !start_date || !end_date) {
-        return res.status(400).json({ message: 'userId, title, description, start_date, and end_date are required.' });
-    }
-
-    try {
-        const chef = await pool.query(
-            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1 AND status IN (\'active\', \'approved\')',
-            [userId]
-        );
-        if (chef.rows.length === 0) {
-            return res.status(403).json({ message: 'Only Verified Chefs can create Kitchen Challenges.' });
-        }
-
-        const result = await pool.query(`
-            INSERT INTO "KitchenChallenge" (title, description, start_date, end_date)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *;
-        `, [title, description, start_date, end_date]);
-
-        res.status(201).json(result.rows[0]);
-    } catch (error) {
-        console.error('CREATE CHALLENGE ERROR:', error);
-        res.status(500).json({ message: 'Error creating challenge.', detail: error.message });
     }
 });
 
@@ -1857,22 +2029,36 @@ app.get('/api/challenges/:id/progress', async (req, res) => {
     const { userId } = req.query;
     if (!userId) return res.status(400).json({ message: 'userId required' });
     try {
+        // Count total recipes in challenge
         const totalRes = await pool.query(
             'SELECT COUNT(*) AS total FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1',
             [challengeId]
         );
         const total = parseInt(totalRes.rows[0].total);
 
-        const cookedRes = await pool.query(`
-            SELECT DISTINCT c.recipe_id
-            FROM "Comment" c
-            JOIN "KitchenChallenge_Recipe" kcr
-              ON kcr.recipe_id = c.recipe_id AND kcr.challenge_id = $1
-            WHERE c.user_id = $2 AND c.cooked_at IS NOT NULL`,
+        // Count approved submissions by this user
+        const approvedRes = await pool.query(
+            `SELECT recipe_id FROM "ChallengeSubmission" 
+             WHERE challenge_id = $1 AND user_id = $2 AND status = 'approved'`,
             [challengeId, userId]
         );
-        const cooked_recipe_ids = cookedRes.rows.map(r => r.recipe_id);
-        res.json({ cooked_count: cooked_recipe_ids.length, total, cooked_recipe_ids });
+
+        // Get all submissions to track status
+        const allSubmissions = await pool.query(
+            `SELECT submission_id, recipe_id, status, photo_url, review_note, submitted_at
+             FROM "ChallengeSubmission"
+             WHERE challenge_id = $1 AND user_id = $2`,
+            [challengeId, userId]
+        );
+
+        const cooked_recipe_ids = approvedRes.rows.map(r => r.recipe_id);
+        
+        res.json({ 
+            cooked_count: cooked_recipe_ids.length, 
+            total, 
+            cooked_recipe_ids,
+            submissions: allSubmissions.rows
+        });
     } catch (error) {
         console.error('PROGRESS ERROR:', error);
         res.status(500).json({ message: 'Error fetching progress.', detail: error.message });
@@ -1887,15 +2073,13 @@ app.get('/api/challenges/:id/leaderboard', async (req, res) => {
             SELECT
                 u.user_id,
                 u.username,
-                COUNT(DISTINCT c.recipe_id) AS cooked_count
+                COUNT(DISTINCT cs.recipe_id) AS cooked_count
             FROM "HomeCook_Challenge" hcc
             JOIN "User" u ON u.user_id = hcc.user_id
-            LEFT JOIN "Comment" c
-                ON c.user_id = hcc.user_id
-               AND c.cooked_at IS NOT NULL
-               AND c.recipe_id IN (
-                   SELECT recipe_id FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1
-               )
+            LEFT JOIN "ChallengeSubmission" cs 
+                ON cs.user_id = hcc.user_id 
+                AND cs.challenge_id = hcc.challenge_id
+                AND cs.status = 'approved'
             WHERE hcc.challenge_id = $1
             GROUP BY u.user_id, u.username
             ORDER BY cooked_count DESC
@@ -1926,6 +2110,369 @@ app.get('/api/challenges/:id/recipes', async (req, res) => {
     }
 });
 
+// POST /api/challenges — create new challenge (Verified Chef only)
+app.post('/api/challenges', async (req, res) => {
+    const creator_id = req.body.creator_id || req.body.userId;
+    const { title, description, start_date, end_date } = req.body;
+
+    if (!creator_id || !title || !start_date || !end_date) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Verify user is a Verified Chef
+        const chefCheck = await pool.query(
+            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1 AND status IN (\'active\', \'approved\')',
+            [creator_id]
+        );
+
+        if (chefCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'Only Verified Chefs can create challenges.' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO "KitchenChallenge" (creator_id, title, description, start_date, end_date)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [creator_id, title, description || null, start_date, end_date]
+        );
+
+        res.json({ message: 'Challenge created successfully!', challenge: result.rows[0] });
+    } catch (error) {
+        console.error('CREATE CHALLENGE ERROR:', error);
+        res.status(500).json({ message: 'Error creating challenge.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/:id/recipes — add recipe to challenge (Creator only)
+app.post('/api/challenges/:id/recipes', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId, recipeId } = req.body;
+
+    console.log('ADD RECIPE REQUEST:', { challengeId, userId, recipeId });
+
+    if (!userId || !recipeId) {
+        console.log('MISSING FIELDS:', { userId, recipeId });
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Check if user is the creator
+        const challenge = await pool.query(
+            'SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+            [challengeId]
+        );
+
+        console.log('CHALLENGE FOUND:', challenge.rows[0]);
+
+        if (challenge.rows.length === 0) {
+            return res.status(404).json({ message: 'Challenge not found.' });
+        }
+
+        if (challenge.rows[0].creator_id !== parseInt(userId)) {
+            console.log('PERMISSION DENIED:', { creator_id: challenge.rows[0].creator_id, userId: parseInt(userId) });
+            return res.status(403).json({ message: 'Only the challenge creator can add recipes.' });
+        }
+
+        // Add recipe to challenge
+        await pool.query(
+            `INSERT INTO "KitchenChallenge_Recipe" (challenge_id, recipe_id)
+             VALUES ($1, $2)
+             ON CONFLICT (challenge_id, recipe_id) DO NOTHING`,
+            [challengeId, recipeId]
+        );
+
+        console.log('RECIPE ADDED SUCCESSFULLY');
+        res.json({ message: 'Recipe added to challenge!' });
+    } catch (error) {
+        console.error('ADD RECIPE ERROR:', error);
+        res.status(500).json({ message: 'Error adding recipe.', detail: error.message });
+    }
+});
+
+// DELETE /api/challenges/:id — permanently delete a challenge (creator only)
+app.delete('/api/challenges/:id', async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.body;
+    let client;
+    try {
+        client = await pool.connect();
+        // Verify ownership
+        const check = await client.query('SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ message: 'Challenge not found.' });
+        if (parseInt(check.rows[0].creator_id) !== parseInt(userId)) {
+            return res.status(403).json({ message: 'Only the creator can delete this challenge.' });
+        }
+        await client.query('BEGIN');
+        await client.query('DELETE FROM "ChallengeSubmission" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "HomeCook_Challenge" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "KitchenChallenge" WHERE challenge_id = $1', [id]);
+        await client.query('COMMIT');
+        res.json({ message: 'Challenge deleted.' });
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('DELETE CHALLENGE ERROR:', error);
+        res.status(500).json({ message: 'Error deleting challenge.', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+// DELETE /api/challenges/:challengeId/recipes/:recipeId — remove recipe from challenge
+app.delete('/api/challenges/:challengeId/recipes/:recipeId', async (req, res) => {
+    const { challengeId, recipeId } = req.params;
+
+    try {
+        await pool.query(
+            'DELETE FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1 AND recipe_id = $2',
+            [challengeId, recipeId]
+        );
+
+        res.json({ message: 'Recipe removed from challenge!' });
+    } catch (error) {
+        console.error('REMOVE RECIPE ERROR:', error);
+        res.status(500).json({ message: 'Error removing recipe.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/:id/submit — submit photo proof for recipe completion (Home Cook)
+app.post('/api/challenges/:id/submit', async (req, res) => {
+    const challengeId = req.params.id;
+    const { userId, recipeId, photoUrl } = req.body;
+
+    if (!userId || !recipeId || !photoUrl) {
+        return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+        // Verify user is a home cook and joined the challenge
+        const joinCheck = await pool.query(
+            'SELECT * FROM "HomeCook_Challenge" WHERE user_id = $1 AND challenge_id = $2',
+            [userId, challengeId]
+        );
+
+        if (joinCheck.rows.length === 0) {
+            return res.status(403).json({ message: 'You must join the challenge first.' });
+        }
+
+        // Check if recipe is part of challenge
+        const recipeCheck = await pool.query(
+            'SELECT * FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1 AND recipe_id = $2',
+            [challengeId, recipeId]
+        );
+
+        if (recipeCheck.rows.length === 0) {
+            return res.status(400).json({ message: 'Recipe is not part of this challenge.' });
+        }
+
+        // Check if there's already a submission for this recipe
+        const existingSubmission = await pool.query(
+            'SELECT * FROM "ChallengeSubmission" WHERE user_id = $1 AND challenge_id = $2 AND recipe_id = $3',
+            [userId, challengeId, recipeId]
+        );
+
+        let result;
+        if (existingSubmission.rows.length > 0) {
+            const existing = existingSubmission.rows[0];
+            
+            // Only allow resubmission if previous was rejected
+            if (existing.status === 'rejected') {
+                // Update the existing submission with new photo and reset status to pending
+                result = await pool.query(
+                    `UPDATE "ChallengeSubmission" 
+                     SET photo_url = $1, status = 'pending', reviewed_by = NULL, review_note = NULL, reviewed_at = NULL
+                     WHERE submission_id = $2
+                     RETURNING *`,
+                    [photoUrl, existing.submission_id]
+                );
+            } else {
+                return res.status(400).json({ 
+                    message: existing.status === 'approved' 
+                        ? 'This recipe has already been approved.' 
+                        : 'Submission already pending review.'
+                });
+            }
+        } else {
+            // Insert new submission
+            result = await pool.query(
+                `INSERT INTO "ChallengeSubmission" (user_id, challenge_id, recipe_id, photo_url)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING *`,
+                [userId, challengeId, recipeId, photoUrl]
+            );
+        }
+
+        res.json({ message: 'Submission uploaded successfully!', submission: result.rows[0] });
+    } catch (error) {
+        console.error('SUBMIT PHOTO ERROR:', error);
+        res.status(500).json({ message: 'Error submitting photo.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/submissions — get submissions for review (Challenge Creator only)
+app.get('/api/challenges/:id/submissions', async (req, res) => {
+    const challengeId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            SELECT
+                cs.submission_id,
+                cs.user_id,
+                cs.recipe_id,
+                cs.photo_url,
+                cs.status,
+                cs.submitted_at,
+                cs.review_note,
+                u.username,
+                r.title AS recipe_title
+            FROM "ChallengeSubmission" cs
+            JOIN "User" u ON u.user_id = cs.user_id
+            JOIN "Recipe" r ON r.recipe_id = cs.recipe_id
+            WHERE cs.challenge_id = $1
+            ORDER BY cs.submitted_at DESC
+        `, [challengeId]);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('SUBMISSIONS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching submissions.', detail: error.message });
+    }
+});
+
+// POST /api/challenges/submissions/:id/review — review submission (approve/reject)
+// Only the challenge creator (Verified Chef who created that specific challenge) can review.
+app.post('/api/challenges/submissions/:id/review', async (req, res) => {
+    const submissionId = req.params.id;
+    const { status, reviewNote, reviewedBy } = req.body;
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    if (!reviewedBy) {
+        return res.status(400).json({ message: 'reviewedBy (chef user_id) is required.' });
+    }
+
+    try {
+        // Fetch submission to get challenge_id
+        const subRes = await pool.query(
+            'SELECT challenge_id FROM "ChallengeSubmission" WHERE submission_id = $1',
+            [submissionId]
+        );
+        if (subRes.rows.length === 0) {
+            return res.status(404).json({ message: 'Submission not found.' });
+        }
+        const { challenge_id } = subRes.rows[0];
+
+        // Verify the reviewer is the creator of this specific challenge
+        const challengeRes = await pool.query(
+            'SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+            [challenge_id]
+        );
+        if (challengeRes.rows.length === 0) {
+            return res.status(404).json({ message: 'Challenge not found.' });
+        }
+        if (parseInt(challengeRes.rows[0].creator_id) !== parseInt(reviewedBy)) {
+            return res.status(403).json({ message: 'Only the challenge creator can review submissions.' });
+        }
+
+        // Update submission status
+        await pool.query(
+            `UPDATE "ChallengeSubmission" 
+             SET status = $1, review_note = $2, reviewed_by = $3, reviewed_at = CURRENT_TIMESTAMP
+             WHERE submission_id = $4`,
+            [status, reviewNote || null, reviewedBy, submissionId]
+        );
+
+        // If approved, check if this user completed all recipes
+        if (status === 'approved') {
+            const submission = await pool.query(
+                'SELECT challenge_id, user_id FROM "ChallengeSubmission" WHERE submission_id = $1',
+                [submissionId]
+            );
+
+            if (submission.rows.length > 0) {
+                const { challenge_id, user_id } = submission.rows[0];
+
+                // Count total recipes in challenge
+                const totalRecipes = await pool.query(
+                    'SELECT COUNT(*) AS total FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1',
+                    [challenge_id]
+                );
+
+                // Count approved submissions by this user
+                const approvedCount = await pool.query(
+                    `SELECT COUNT(*) AS approved FROM "ChallengeSubmission" 
+                     WHERE challenge_id = $1 AND user_id = $2 AND status = 'approved'`,
+                    [challenge_id, user_id]
+                );
+
+                const total = parseInt(totalRecipes.rows[0].total);
+                const approved = parseInt(approvedCount.rows[0].approved);
+
+                // If user completed all recipes, check if they're the first to complete
+                if (total > 0 && approved >= total) {
+                    const challenge = await pool.query(
+                        'SELECT winner_id FROM "KitchenChallenge" WHERE challenge_id = $1',
+                        [challenge_id]
+                    );
+
+                    if (challenge.rows.length > 0 && !challenge.rows[0].winner_id) {
+                            // This user is the first to complete - set as winner
+                            await pool.query(
+                                'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
+                                [user_id, challenge_id]
+                            );
+
+                            // Award 100 reward points
+                            await pool.query(
+                                'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3) ON CONFLICT (challenge_id, user_id) DO NOTHING',
+                                [challenge_id, user_id, 100]
+                            );
+
+                            // Award 50 MealCoins to winner
+                            await pool.query(
+                                'UPDATE "User" SET total = total + 50 WHERE user_id = $1',
+                                [user_id]
+                            );
+
+                            console.log(`🏆 Challenge ${challenge_id} won by user ${user_id}!`);
+                        }
+                }
+            }
+        }
+
+        res.json({ message: 'Submission reviewed successfully!' });
+    } catch (error) {
+        console.error('REVIEW SUBMISSION ERROR:', error);
+        res.status(500).json({ message: 'Error reviewing submission.', detail: error.message });
+    }
+});
+
+// GET /api/challenges/:id/participants — get all participants
+app.get('/api/challenges/:id/participants', async (req, res) => {
+    const challengeId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            SELECT
+                u.user_id,
+                u.username,
+                hcc.joined_at
+            FROM "HomeCook_Challenge" hcc
+            JOIN "User" u ON u.user_id = hcc.user_id
+            WHERE hcc.challenge_id = $1
+            ORDER BY hcc.joined_at DESC
+        `, [challengeId]);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('PARTICIPANTS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching participants.', detail: error.message });
+    }
+});
+
 // Client-side error logging endpoint
 app.post('/api/client-error', (req, res) => {
     try {
@@ -1941,7 +2488,7 @@ app.post('/api/client-error', (req, res) => {
 // LEADERBOARDS & ACHIEVEMENTS ENDPOINTS
 // =============================================================
 
-// GET /api/leaderboard/global — Top Home Cooks by recipes cooked
+// GET /api/leaderboard/global — Top Home Cooks by challenges won, then recipes cooked
 app.get('/api/leaderboard/global', async (req, res) => {
     try {
         const query = `
@@ -1949,18 +2496,38 @@ app.get('/api/leaderboard/global', async (req, res) => {
                 u.user_id, 
                 u.username, 
                 u.total AS meal_coins,
-                COUNT(c.comment_id) AS cooked_count
+                -- cooked_count = distinct recipes cooked via comments OR approved in challenges
+                (
+                    SELECT COUNT(DISTINCT recipe_id) FROM (
+                        SELECT c2.recipe_id
+                        FROM "Comment" c2
+                        WHERE c2.user_id = u.user_id AND c2.cooked_at IS NOT NULL AND c2.recipe_id IS NOT NULL
+                        UNION
+                        SELECT cs.recipe_id
+                        FROM "ChallengeSubmission" cs
+                        WHERE cs.user_id = u.user_id AND cs.status = 'approved'
+                    ) cooked_recipes
+                ) AS cooked_count,
+                COUNT(DISTINCT kc.challenge_id) AS challenges_won,
+                COALESCE(SUM(DISTINCT cr.reward_points), 0) AS total_reward_points,
+                COALESCE(
+                    json_agg(
+                        DISTINCT jsonb_build_object('title', kc.title, 'won_at', cr.awarded_at)
+                    ) FILTER (WHERE kc.challenge_id IS NOT NULL),
+                    '[]'::json
+                ) AS won_challenges
             FROM "User" u
             LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
             LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id AND vc.status IN ('active', 'approved')
             LEFT JOIN "Administrator" a ON a.user_id = u.user_id
             LEFT JOIN "LocalSupplier" ls ON ls.user_id = u.user_id
-            LEFT JOIN "Comment" c ON c.user_id = u.user_id AND c.cooked_at IS NOT NULL
+            LEFT JOIN "KitchenChallenge" kc ON kc.winner_id = u.user_id
+            LEFT JOIN "ChallengeReward" cr ON cr.user_id = u.user_id AND cr.challenge_id = kc.challenge_id
             WHERE a.user_id IS NULL
               AND ls.user_id IS NULL
               AND (hc.user_id IS NOT NULL OR vc.user_id IS NOT NULL)
             GROUP BY u.user_id, u.username, u.total
-            ORDER BY cooked_count DESC, meal_coins DESC;
+            ORDER BY challenges_won DESC, cooked_count DESC, meal_coins DESC;
         `;
         const result = await pool.query(query);
         res.json(result.rows);
@@ -1974,9 +2541,15 @@ app.get('/api/leaderboard/global', async (req, res) => {
 app.get('/api/users/:id/achievements', async (req, res) => {
     const userId = req.params.id;
     try {
-        // 1. Get total cooked recipes
+        // 1. Get total distinct cooked recipes (via comments OR approved challenge submissions)
         const cookedResult = await pool.query(
-            `SELECT COUNT(*) as cooked_count FROM "Comment" WHERE user_id = $1 AND cooked_at IS NOT NULL`,
+            `SELECT COUNT(DISTINCT recipe_id) AS cooked_count FROM (
+                SELECT recipe_id FROM "Comment"
+                WHERE user_id = $1 AND cooked_at IS NOT NULL AND recipe_id IS NOT NULL
+                UNION
+                SELECT recipe_id FROM "ChallengeSubmission"
+                WHERE user_id = $1 AND status = 'approved'
+            ) cooked_recipes`,
             [userId]
         );
         const cookedCount = parseInt(cookedResult.rows[0].cooked_count) || 0;
@@ -1988,11 +2561,18 @@ app.get('/api/users/:id/achievements', async (req, res) => {
         );
         const joinedCount = parseInt(joinedResult.rows[0].joined_count) || 0;
 
-        // 3. Get user details (MealCoins)
+        // 3. Get challenges won
+        const wonResult = await pool.query(
+            `SELECT COUNT(*) as won_count FROM "KitchenChallenge" WHERE winner_id = $1`,
+            [userId]
+        );
+        const wonCount = parseInt(wonResult.rows[0].won_count) || 0;
+
+        // 4. Get user details (MealCoins)
         const userResult = await pool.query(`SELECT total FROM "User" WHERE user_id = $1`, [userId]);
         const mealCoins = userResult.rows.length > 0 ? parseFloat(userResult.rows[0].total) : 0;
 
-        // 4. Calculate Badges dynamically
+        // 5. Calculate Badges dynamically
         const badges = [];
 
         // Cooking Badges
@@ -2005,21 +2585,44 @@ app.get('/api/users/:id/achievements', async (req, res) => {
         if (joinedCount >= 1) badges.push({ id: 'challenger', name: 'Challenger', icon: '⚔️', description: 'Joined your first kitchen challenge.', color: 'blue' });
         if (joinedCount >= 5) badges.push({ id: 'challenge_veteran', name: 'Challenge Veteran', icon: '🛡️', description: 'Joined 5 kitchen challenges.', color: 'indigo' });
 
+        // Challenge Win Badges
+        if (wonCount >= 1) badges.push({ id: 'champion', name: 'Challenge Champion', icon: '🏆', description: 'Won your first kitchen challenge!', color: 'yellow' });
+        if (wonCount >= 3) badges.push({ id: 'serial_winner', name: 'Serial Winner', icon: '🥇', description: 'Won 3 kitchen challenges.', color: 'amber' });
+
         // MealCoin Badges
         if (mealCoins >= 50) badges.push({ id: 'deal_hunter', name: 'Deal Hunter', icon: '💎', description: 'Earned 50 MealCoins.', color: 'teal' });
         if (mealCoins >= 200) badges.push({ id: 'meal_mogul', name: 'Meal Mogul', icon: '🏦', description: 'Accumulated 200 MealCoins.', color: 'yellow' });
 
         res.json({
-            stats: {
-                cookedCount,
-                joinedCount,
-                mealCoins
-            },
+            stats: { cookedCount, joinedCount, wonCount, mealCoins },
             badges
         });
     } catch (error) {
         console.error('ACHIEVEMENTS ERROR:', error);
         res.status(500).json({ message: 'Error fetching achievements.', detail: error.message });
+    }
+});
+
+// GET /api/users/:id/rewards — Get reward log for a user
+app.get('/api/users/:id/rewards', async (req, res) => {
+    const userId = req.params.id;
+    try {
+        const result = await pool.query(`
+            SELECT
+                cr.reward_id,
+                cr.reward_points,
+                cr.awarded_at,
+                kc.title    AS challenge_title,
+                kc.challenge_id
+            FROM "ChallengeReward" cr
+            JOIN "KitchenChallenge" kc ON kc.challenge_id = cr.challenge_id
+            WHERE cr.user_id = $1
+            ORDER BY cr.awarded_at DESC
+        `, [userId]);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('REWARDS ERROR:', error);
+        res.status(500).json({ message: 'Error fetching rewards.', detail: error.message });
     }
 });
 

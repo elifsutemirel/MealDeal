@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, X, Clock, Star, Loader2 } from 'lucide-react';
-import { RECIPES } from '../../data/recipes';
 
 export const ExploreView = ({ onSelectRecipe }) => {
   const [recipes, setRecipes] = useState([]);
@@ -14,18 +13,12 @@ export const ExploreView = ({ onSelectRecipe }) => {
     fetch('/api/recipes')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
-          // Combine DB recipes (first) with mock recipes
-          setRecipes([...data, ...RECIPES]);
-        } else {
-          // Fallback to mock data if the DB is empty (e.g., after a fresh docker compose down -v)
-          setRecipes(RECIPES);
-        }
+        setRecipes(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(err => {
         console.error("Failed to fetch recipes:", err);
-        setRecipes(RECIPES);
+        setRecipes([]);
         setLoading(false);
       });
   }, []);

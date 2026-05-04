@@ -1,36 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, Trophy, Search, X, Plus, Send } from 'lucide-react';
+import { Loader2, Trophy, Search, X, Clock } from 'lucide-react';
 import { ChallengeDetailModal } from './ChallengeDetailModal';
 
 export const ChallengesView = ({ user }) => {
   const [filter, setFilter] = useState('active');
-  const [joinedChallenges, setJoinedChallenges] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const handleJoinChallenge = (challengeId) => {
-    if (!joinedChallenges.includes(challengeId)) {
-      setJoinedChallenges([...joinedChallenges, challengeId]);
-    }
-  };
-
-  const isJoined = (challengeId) => joinedChallenges.includes(challengeId);
   const [challenges, setChallenges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [joiningId, setJoiningId] = useState(null);
   const [joinedIds, setJoinedIds] = useState(new Set());
-  const [progressMap, setProgressMap] = useState({}); // { challenge_id: { cooked_count, total } }
+  const [progressMap, setProgressMap] = useState({});
   const [selectedChallenge, setSelectedChallenge] = useState(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [createMessage, setCreateMessage] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [challengeForm, setChallengeForm] = useState({
-    title: '',
-    description: '',
-    start_date: '',
-    end_date: '',
-  });
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Fetch all challenges from DB
   const fetchChallenges = useCallback(async () => {
     setLoading(true);
     try {
@@ -45,7 +27,6 @@ export const ChallengesView = ({ user }) => {
     }
   }, []);
 
-  // Fetch which challenges this user has joined
   const fetchJoined = useCallback(async () => {
     if (!user) return;
     try {
@@ -59,7 +40,6 @@ export const ChallengesView = ({ user }) => {
     }
   }, [user]);
 
-  // Fetch per-challenge progress for current user
   const fetchAllProgress = useCallback(async (challengeList) => {
     if (!user || !challengeList.length) return;
     const results = {};
@@ -86,11 +66,21 @@ export const ChallengesView = ({ user }) => {
     }
   }, [challenges, fetchAllProgress]);
 
+  // Real-time status updates: Update current time every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000); // Update every second for real-time countdown
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleJoin = async (e, challengeId) => {
     e.stopPropagation();
     if (!user) return alert('Please sign in to join a challenge.');
-    if (!['Home Cook', 'Verified Chef'].includes(user.role)) return alert('Only Home Cooks can join challenges.');
-    if (joinedIds.has(challengeId)) return;
+    if (!['Home Cook', 'Verified Chef'].includes(user.role)) {
+      return alert('Only Home Cooks can join challenges.');
+    }
 
     setJoiningId(challengeId);
     try {
@@ -99,16 +89,17 @@ export const ChallengesView = ({ user }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id }),
       });
-      const data = await res.json();
-      if (res.ok || data.already_joined) {
-        setJoinedIds(prev => new Set([...prev, challengeId]));
-        // Update participants count locally
-        setChallenges(prev =>
-          prev.map(c =>
-            c.challenge_id === challengeId && !joinedIds.has(challengeId)
-              ? { ...c, participants: (parseInt(c.participants) || 0) + 1 }
-              : c
-          )
+
+      if (res.ok) {
+        setJoinedIds(new Set([...joinedIds, challengeId]));
+        fetchChallenges();
+        alert('Joined challenge successfully!');
+      } else {
+        const error = await res.json();
+        alert(
+          error.message === 'User has already joined this challenge.'
+            ? 'Already joined!'
+            : 'Failed to join challenge.'
         );
       }
     } catch (err) {
@@ -118,55 +109,50 @@ export const ChallengesView = ({ user }) => {
     }
   };
 
-  const handleCreateChallenge = async (e) => {
-    e.preventDefault();
-    if (user?.role !== 'Verified Chef') {
-      setCreateMessage('Only Verified Chefs can create Kitchen Challenges.');
-      return;
-    }
-
-    setCreating(true);
-    setCreateMessage('');
-    try {
-      const res = await fetch('/api/challenges', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, ...challengeForm }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Challenge could not be created.');
-      setChallengeForm({ title: '', description: '', start_date: '', end_date: '' });
-      setCreateMessage('Kitchen Challenge created.');
-      setShowCreateForm(false);
-      fetchChallenges();
-    } catch (err) {
-      setCreateMessage(err.message);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Called by the modal when a cook is logged, to refresh progress card
-  const handleCookLogged = (challengeId) => {
+  const handleProgressUpdate = (challengeId) => {
     if (!user) return;
     fetch(`/api/challenges/${challengeId}/progress?userId=${user.id}`)
       .then(r => r.json())
       .then(data => setProgressMap(prev => ({ ...prev, [challengeId]: data })))
       .catch(() => { });
+    fetchChallenges();
   };
 
+  const getChallengeStatus = (challenge) => {
+    const now = currentTime;
+    const start = new Date(challenge.start_date);
+    const end = new Date(challenge.end_date);
+    
+    if (challenge.winner_id) return 'completed';
+    if (now < start) return 'upcoming';
+    if (now > end) return 'ended';
+    return 'active';
+  };
+
+  // Debug: Log status changes
+  useEffect(() => {
+    if (challenges.length > 0) {
+      challenges.forEach(c => {
+        const status = getChallengeStatus(c);
+        console.log(`Challenge "${c.title}" status: ${status}`, {
+          now: currentTime,
+          start: new Date(c.start_date),
+          end: new Date(c.end_date)
+        });
+      });
+    }
+  }, [currentTime, challenges]);
+
   const filteredChallenges = challenges.filter(c => {
-    const matchesFilter = filter === 'all' ? true : c.status === filter;
+    const status = getChallengeStatus(c);
     const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = c.title.toLowerCase().includes(searchLower) || c.description.toLowerCase().includes(searchLower);
+    const matchesSearch = c.title.toLowerCase().includes(searchLower) || (c.description || '').toLowerCase().includes(searchLower);
+    if (filter === 'joined') {
+      return joinedIds.has(c.challenge_id) && matchesSearch;
+    }
+    const matchesFilter = filter === 'all' ? true : filter === status;
     return matchesFilter && matchesSearch;
   });
-
-  const difficultyColor = (d) => ({
-    Easy: 'text-emerald-500',
-    Medium: 'text-amber-500',
-    Hard: 'text-red-500',
-  }[d] || 'text-slate-400');
 
   if (loading) {
     return (
@@ -181,54 +167,12 @@ export const ChallengesView = ({ user }) => {
     <>
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8 pb-20">
         <header className="mb-12">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-4xl font-black text-primary mb-2">
-                Kitchen <span className="text-emerald-500 italic">Challenges</span>
-              </h1>
-              <p className="text-secondary text-lg">Complete challenges, earn badges, and become a MealDeal champion!</p>
-            </div>
-            {user?.role === 'Verified Chef' && (
-              <button
-                onClick={() => setShowCreateForm(prev => !prev)}
-                className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest"
-              >
-                <Plus size={16} /> Create Challenge
-              </button>
-            )}
-          </div>
-
-          {showCreateForm && user?.role === 'Verified Chef' && (
-            <form onSubmit={handleCreateChallenge} className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm mb-8 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Title</label>
-                  <input required value={challengeForm.title} onChange={(e) => setChallengeForm(prev => ({ ...prev, title: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Start Date</label>
-                    <input required type="date" value={challengeForm.start_date} onChange={(e) => setChallengeForm(prev => ({ ...prev, start_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">End Date</label>
-                    <input required type="date" value={challengeForm.end_date} onChange={(e) => setChallengeForm(prev => ({ ...prev, end_date: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 block">Description</label>
-                <textarea required rows={3} value={challengeForm.description} onChange={(e) => setChallengeForm(prev => ({ ...prev, description: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500" />
-              </div>
-              <button disabled={creating} className="inline-flex items-center gap-2 bg-slate-900 dark:bg-slate-700 text-white px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest disabled:opacity-60">
-                <Send size={16} /> {creating ? 'Creating...' : 'Save Challenge'}
-              </button>
-              {createMessage && <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{createMessage}</p>}
-            </form>
-          )}
+          <h1 className="text-4xl font-black text-primary mb-2">
+            Kitchen <span className="text-emerald-500 italic">Challenges</span>
+          </h1>
+          <p className="text-secondary text-lg mb-8">Complete challenges, earn badges, and become a MealDeal champion!</p>
 
           <div className="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm mb-8 space-y-6">
-            {/* Filter tabs */}
             <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-700 px-5 py-4 rounded-2xl w-full border border-slate-200 dark:border-slate-600 focus-within:border-emerald-500 focus-within:bg-white dark:focus-within:bg-slate-600 transition-all">
               <Search size={20} className="text-slate-400 dark:text-slate-500" />
               <input
@@ -236,26 +180,35 @@ export const ChallengesView = ({ user }) => {
                 placeholder="Search challenges..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-transparent border-none outline-none w-full text-sm font-medium text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                className="flex-1 bg-transparent outline-none text-sm font-medium text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
-                  <X size={16} />
+                <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                  <X size={18} />
                 </button>
               )}
             </div>
 
-            <div className="flex gap-3">
-              {['all', 'active', 'upcoming'].map(status => (
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'active', label: 'Active' },
+                { key: 'upcoming', label: 'Upcoming' },
+                { key: 'completed', label: 'Completed' },
+                ...(['Home Cook', 'Verified Chef'].includes(user?.role) ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
+              ].map(({ key: f, label }) => (
                 <button
-                  key={status}
-                  onClick={() => setFilter(status)}
-                  className={`px-6 py-3 rounded-2xl font-bold uppercase text-xs transition-all ${filter === status
-                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'
-                    : 'bg-tertiary text-secondary hover:bg-primary dark:bg-slate-800 dark:hover:bg-slate-700'
-                    }`}
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all ${
+                    filter === f
+                      ? f === 'joined'
+                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                        : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }`}
                 >
-                  {status === 'all' ? '🎯 All' : status === 'active' ? '⚡ Active' : '🔜 Upcoming'}
+                  {label}
                 </button>
               ))}
             </div>
@@ -263,19 +216,36 @@ export const ChallengesView = ({ user }) => {
         </header>
 
         {filteredChallenges.length === 0 ? (
-          <div className="py-20 text-center text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-[3rem]">
-            No challenges found matching your search.
+          <div className="py-20 text-center">
+            <Trophy size={64} className="mx-auto text-slate-200 dark:text-slate-700 mb-4" />
+            <p className="text-slate-400 dark:text-slate-500 font-bold text-lg">No challenges found</p>
+            <p className="text-slate-300 dark:text-slate-600 text-sm mt-2">Try adjusting your filters or search query</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
-            {filteredChallenges.map(challenge => {
-              const prog = progressMap[challenge.challenge_id];
-              const progressPercent = prog && prog.total > 0
-                ? Math.round((parseInt(prog.cooked_count) / parseInt(prog.total)) * 100)
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filteredChallenges.map((challenge) => {
+              const prog = progressMap[challenge.challenge_id] || {};
+              const progressPercent = prog.total > 0
+                ? Math.round((parseInt(prog.completed_count || prog.cooked_count || 0) / parseInt(prog.total)) * 100)
                 : 0;
+
               const isJoined = joinedIds.has(challenge.challenge_id);
               const isJoining = joiningId === challenge.challenge_id;
               const canJoinChallenge = ['Home Cook', 'Verified Chef'].includes(user?.role);
+              const status = getChallengeStatus(challenge);
+              
+              const endDate = new Date(challenge.end_date);
+              const now = currentTime;
+              const timeRemaining = endDate - now;
+              const daysRemaining = Math.max(0, Math.floor(timeRemaining / (1000 * 60 * 60 * 24)));
+              const hoursRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+              const minutesRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)));
+              const secondsRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60)) / 1000));
+              const timeLabel = daysRemaining > 0
+                ? `${daysRemaining}d ${hoursRemaining}h ${minutesRemaining}m`
+                : hoursRemaining > 0
+                ? `${hoursRemaining}h ${minutesRemaining}m ${secondsRemaining}s`
+                : `${minutesRemaining}m ${secondsRemaining}s`;
 
               return (
                 <div
@@ -283,48 +253,53 @@ export const ChallengesView = ({ user }) => {
                   onClick={() => setSelectedChallenge(challenge)}
                   className="bg-secondary rounded-[2rem] overflow-hidden border border-primary shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
                 >
-                  {/* Image */}
                   <div className="relative h-44 overflow-hidden">
-                    <img
-                      src={challenge.image}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      alt={challenge.title}
-                    />
+                    <div className="w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-600 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center">
+                      <Trophy size={64} className="text-white/30" />
+                    </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-4 right-4 bg-white dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center text-2xl shadow-lg">
-                      {challenge.icon}
+                      🏆
                     </div>
                     <div className="absolute top-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
-                      {challenge.status === 'active' ? '🔥 Active' : '🔜 Upcoming'}
+                      {status === 'active' ? '🔥 Active' : status === 'upcoming' ? '🔜 Upcoming' : status === 'completed' ? '✅ Done' : '⏰ Ended'}
                     </div>
                     {isJoined && (
                       <div className="absolute bottom-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
                         ✅ Joined
                       </div>
                     )}
+                    {challenge.winner_id && challenge.winner_name && (
+                      <div className="absolute bottom-4 right-4 bg-yellow-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                        👑 {challenge.winner_name}
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-6">
                     <h3 className="text-xl font-black text-primary mb-1">{challenge.title}</h3>
-                    <p className="text-sm text-secondary mb-4 line-clamp-2">{challenge.description}</p>
+                    <p className="text-sm text-secondary mb-4 line-clamp-2">{challenge.description || 'Complete all recipes before the deadline!'}</p>
 
-                    {/* Meta grid */}
                     <div className="grid grid-cols-3 gap-2 mb-4 text-[10px] font-bold uppercase">
                       <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
-                        <p className="text-tertiary">Duration</p>
-                        <p className="text-primary">{challenge.duration}</p>
+                        <p className="text-tertiary flex items-center gap-1">
+                          <Clock size={10} />
+                          Time Left
+                        </p>
+                        <p className="text-primary">
+                          {status === 'completed' || status === 'ended' ? 'Ended' : timeLabel}
+                        </p>
                       </div>
                       <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
-                        <p className="text-tertiary">Difficulty</p>
-                        <p className={difficultyColor(challenge.difficulty)}>{challenge.difficulty}</p>
+                        <p className="text-tertiary">Participants</p>
+                        <p className="text-primary">{challenge.participants || 0}</p>
                       </div>
                       <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
                         <p className="text-tertiary">Recipes</p>
-                        <p className="text-primary">{challenge.recipe_count ?? '—'}</p>
+                        <p className="text-primary">{challenge.recipe_count || 0}</p>
                       </div>
                     </div>
 
-                    {/* Progress bar — only if user is logged in */}
                     {user && (
                       <div className="mb-4">
                         <div className="flex justify-between text-[10px] font-bold mb-1.5">
@@ -342,27 +317,21 @@ export const ChallengesView = ({ user }) => {
                       </div>
                     )}
 
-                    {/* Prize */}
-                    <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                      <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400">
-                        🏆 {challenge.prize}
-                      </p>
-                    </div>
-
-                    {/* Footer row */}
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-tertiary">👥 {(challenge.participants ?? 0).toLocaleString()} joined</span>
+                      <span className="text-tertiary">
+                        {new Date(challenge.start_date).toLocaleDateString()} - {new Date(challenge.end_date).toLocaleDateString()}
+                      </span>
                       <button
                         onClick={(e) => {
-                          if (challenge.status !== 'active') {
+                          if (status !== 'active') {
                             e.stopPropagation();
                             return;
                           }
                           handleJoin(e, challenge.challenge_id);
                         }}
-                        disabled={isJoining || isJoined || !canJoinChallenge}
+                        disabled={isJoining || isJoined || !canJoinChallenge || status !== 'active'}
                         className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all flex items-center gap-1.5
-                          ${challenge.status !== 'active'
+                          ${status !== 'active'
                             ? 'bg-tertiary text-secondary dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
                             : isJoined
                               ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-default border border-emerald-200 dark:border-emerald-800'
@@ -372,15 +341,13 @@ export const ChallengesView = ({ user }) => {
                           }`}
                       >
                         {isJoining && <Loader2 size={10} className="animate-spin" />}
-                        {challenge.status !== 'active'
-                          ? '🔜 Upcoming'
-                          : isJoined
-                            ? '✅ Joined'
-                            : !user
-                              ? 'Sign In'
-                              : !canJoinChallenge
-                                ? 'Home Cook only'
-                                : 'Join Challenge'
+                        {status === 'completed' || status === 'ended'
+                          ? '🏁 Ended'
+                          : status === 'upcoming'
+                            ? '🔜 Upcoming'
+                            : isJoined
+                              ? '✅ Joined'
+                              : '🚀 Join Now'
                         }
                       </button>
                     </div>
@@ -392,13 +359,12 @@ export const ChallengesView = ({ user }) => {
         )}
       </div>
 
-      {/* Detail Modal */}
       {selectedChallenge && (
         <ChallengeDetailModal
           challenge={selectedChallenge}
           user={user}
           onClose={() => setSelectedChallenge(null)}
-          onCookLogged={handleCookLogged}
+          onProgressUpdate={handleProgressUpdate}
         />
       )}
     </>
