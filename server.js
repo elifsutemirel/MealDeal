@@ -5,12 +5,17 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { dirname, extname, join } from 'path';
+import fs from 'fs';
+import multer from 'multer';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const uploadsRoot = join(__dirname, 'uploads');
+const verifiedChefUploadDir = join(uploadsRoot, 'verified-chef-applications');
+fs.mkdirSync(verifiedChefUploadDir, { recursive: true });
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -25,6 +30,38 @@ app.use((req, res, next) => {
 
 // Serve static files from dist directory (built frontend)
 app.use(express.static('dist'));
+app.use('/uploads', express.static(uploadsRoot));
+
+const applicationUpload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, verifiedChefUploadDir),
+        filename: (_req, file, cb) => {
+            const safeBase = file.originalname
+                .replace(extname(file.originalname), '')
+                .replace(/[^a-zA-Z0-9_-]/g, '-')
+                .slice(0, 40) || 'document';
+            cb(null, `${Date.now()}-${Math.round(Math.random() * 1E9)}-${safeBase}${extname(file.originalname).toLowerCase()}`);
+        }
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const allowedTypes = new Set([
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/webp'
+        ]);
+        if (!allowedTypes.has(file.mimetype)) {
+            return cb(new Error('Only PDF, JPG, PNG, and WEBP files are allowed.'));
+        }
+        cb(null, true);
+    }
+});
+
+const uploadApplicationFiles = applicationUpload.fields([
+    { name: 'cv_file', maxCount: 1 },
+    { name: 'certificate_file', maxCount: 1 }
+]);
 
 app.get('/api/debug', (req, res) => res.json({ message: 'API is reachable!', routes: ['/api/auth/register', '/api/auth/login', '/api/supplier/inventory'] }));
 
@@ -37,11 +74,133 @@ const pool = new Pool({
     port: process.env.PGPORT || 5432,
 });
 
+async function requireAdmin(userId, db = pool) {
+    if (!userId) {
+        const error = new Error('adminId required.');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    const result = await db.query('SELECT user_id FROM "Administrator" WHERE user_id = $1', [userId]);
+    if (result.rows.length === 0) {
+        const error = new Error('Administrator access required.');
+        error.statusCode = 403;
+        throw error;
+    }
+}
+
+async function ensureApplicationUploadColumns() {
+    await pool.query(`
+        ALTER TABLE "VerifiedChefApplication"
+        ADD COLUMN IF NOT EXISTS cv_file_path VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS certificate_file_path VARCHAR(255);
+    `);
+
+    await pool.query(`
+        ALTER TABLE "VerifiedChefApplication"
+        DROP COLUMN IF EXISTS cv_url;
+    `);
+}
+
+async function ensureChallengeWorkflowSchema() {
+    await pool.query(`
+        ALTER TABLE "KitchenChallenge"
+        ADD COLUMN IF NOT EXISTS creator_id INT REFERENCES "VerifiedChef"(user_id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS winner_id INT REFERENCES "User"(user_id) ON DELETE SET NULL;
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS "ChallengeSubmission" (
+            submission_id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+            challenge_id INT NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+            recipe_id INT NOT NULL REFERENCES "Recipe"(recipe_id) ON DELETE CASCADE,
+            photo_url TEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+            submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_by INT REFERENCES "User"(user_id) ON DELETE SET NULL,
+            review_note TEXT,
+            reviewed_at TIMESTAMP,
+            UNIQUE (user_id, challenge_id, recipe_id)
+        );
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS "ChallengeReward" (
+            reward_id SERIAL PRIMARY KEY,
+            challenge_id INT NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+            reward_points INT NOT NULL DEFAULT 0,
+            awarded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (challenge_id, user_id)
+        );
+    `);
+}
+
+async function ensureMockAdminAccount() {
+    const username = process.env.MOCK_ADMIN_USERNAME || 'mockadmin';
+    const email = process.env.MOCK_ADMIN_EMAIL || 'mockadmin@mealdeal.local';
+    const password = process.env.MOCK_ADMIN_PASSWORD || 'mockadmin123';
+    const passwordHash = await bcrypt.hash(password, 10);
+    let client;
+
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const existing = await client.query(
+            'SELECT user_id FROM "User" WHERE username = $1 OR email = $2 LIMIT 1',
+            [username, email]
+        );
+
+        let userId;
+        if (existing.rows.length > 0) {
+            userId = existing.rows[0].user_id;
+            await client.query(
+                'UPDATE "User" SET username = $1, email = $2, password_hash = $3 WHERE user_id = $4',
+                [username, email, passwordHash, userId]
+            );
+        } else {
+            const created = await client.query(
+                'INSERT INTO "User" (username, email, password_hash, join_date) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING user_id',
+                [username, email, passwordHash]
+            );
+            userId = created.rows[0].user_id;
+        }
+
+        await client.query(
+            `INSERT INTO "Administrator" (user_id, role_level, note)
+             VALUES ($1, 'System Admin', 'Seeded demo admin account')
+             ON CONFLICT (user_id) DO UPDATE
+             SET role_level = EXCLUDED.role_level,
+                 note = EXCLUDED.note`,
+            [userId]
+        );
+
+        await client.query('COMMIT');
+        console.log(`Mock admin ready: ${email} / ${password}`);
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('MOCK ADMIN SEED ERROR:', error.message);
+    } finally {
+        if (client) client.release();
+    }
+}
+
+function handleAdminError(res, error, label) {
+    console.error(label, error);
+    res.status(error.statusCode || 500).json({
+        message: error.statusCode ? error.message : 'Admin operation failed.',
+        detail: error.statusCode ? undefined : error.message
+    });
+}
+
 // Authentication Endpoints
 
 // REGISTER
 app.post('/api/auth/register', async (req, res) => {
-    const { username, email, password, role, address, location_name } = req.body;
+    const { username, email, password } = req.body;
+    const publicRole = 'Home Cook';
     let client;
     try {
         client = await pool.connect();
@@ -67,21 +226,13 @@ app.post('/api/auth/register', async (req, res) => {
         );
         const userId = userResult.rows[0].user_id;
 
-        // 4. Role-specific subtype insertion
-        if (role === 'Home Cook') {
-            await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
-            await client.query('INSERT INTO "HomeCook" (user_id) VALUES ($1)', [userId]);
-        } else if (role === 'Verified Chef') {
-            await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
-            await client.query('INSERT INTO "VerifiedChef" (user_id, verification_date, status) VALUES ($1, CURRENT_DATE, \'pending\')', [userId]);
-        } else if (role === 'Local Supplier') {
-            await client.query('INSERT INTO "LocalSupplier" (user_id, address, location_name) VALUES ($1, $2, $3)', [userId, address || '', location_name || '']);
-        } else if (role === 'Administrator') {
-            await client.query('INSERT INTO "Administrator" (user_id, role_level) VALUES ($1, $2)', [userId, 'standard']);
-        }
+        // 4. Public registration is always Home Cook. Admin and Verified Chef
+        // accounts are controlled by seed/admin approval workflows.
+        await client.query('INSERT INTO "RecipeCreator" (user_id) VALUES ($1)', [userId]);
+        await client.query('INSERT INTO "HomeCook" (user_id) VALUES ($1)', [userId]);
 
         await client.query('COMMIT');
-        res.status(201).json({ user_id: userId, username, email, role });
+        res.status(201).json({ user_id: userId, username, email, role: publicRole });
 
     } catch (error) {
         if (client) await client.query('ROLLBACK');
@@ -102,7 +253,7 @@ app.post('/api/auth/login', async (req, res) => {
       SELECT u.user_id, u.username, u.email, u.password_hash,
       CASE
         WHEN a.user_id  IS NOT NULL THEN 'Administrator'
-        WHEN vc.user_id IS NOT NULL THEN 'Verified Chef'
+        WHEN vc.user_id IS NOT NULL AND vc.status IN ('active', 'approved') THEN 'Verified Chef'
         WHEN hc.user_id IS NOT NULL THEN 'Home Cook'
         WHEN ls.user_id IS NOT NULL THEN 'Local Supplier'
         ELSE 'User'
@@ -132,6 +283,533 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Internal server error.' });
+    }
+});
+
+// VERIFIED CHEF APPLICATION WORKFLOW
+app.post('/api/verified-chef-applications', uploadApplicationFiles, async (req, res) => {
+    const {
+        userId,
+        full_name,
+        biography,
+        cooking_experience,
+        education,
+        certificates,
+        awards,
+        professional_experience,
+        portfolio_url,
+        cv_text
+    } = req.body;
+    const cvFilePath = req.files?.cv_file?.[0] ? `/uploads/verified-chef-applications/${req.files.cv_file[0].filename}` : null;
+    const certificateFilePath = req.files?.certificate_file?.[0] ? `/uploads/verified-chef-applications/${req.files.certificate_file[0].filename}` : null;
+
+    if (!userId || !full_name) {
+        return res.status(400).json({ message: 'userId and full_name are required.' });
+    }
+
+    try {
+        const homeCook = await pool.query('SELECT user_id FROM "HomeCook" WHERE user_id = $1', [userId]);
+        if (homeCook.rows.length === 0) {
+            return res.status(403).json({ message: 'Only Home Cooks can apply for Verified Chef status.' });
+        }
+
+        const existingChef = await pool.query(
+            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1 AND status IN (\'active\', \'approved\')',
+            [userId]
+        );
+        if (existingChef.rows.length > 0) {
+            return res.status(400).json({ message: 'This user is already a Verified Chef.' });
+        }
+
+        const pending = await pool.query(
+            'SELECT application_id FROM "VerifiedChefApplication" WHERE user_id = $1 AND status = \'pending\'',
+            [userId]
+        );
+        if (pending.rows.length > 0) {
+            return res.status(400).json({ message: 'You already have a pending application.' });
+        }
+
+        const result = await pool.query(`
+            INSERT INTO "VerifiedChefApplication" (
+                user_id, full_name, biography, cooking_experience, education,
+                certificates, awards, professional_experience, portfolio_url,
+                cv_file_path, certificate_file_path, cv_text
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING *;
+        `, [
+            userId,
+            full_name,
+            biography || null,
+            cooking_experience || null,
+            education || null,
+            certificates || null,
+            awards || null,
+            professional_experience || null,
+            portfolio_url || null,
+            cvFilePath,
+            certificateFilePath,
+            cv_text || null
+        ]);
+
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error('VERIFIED CHEF APPLICATION CREATE ERROR:', error);
+        res.status(500).json({ message: 'Error submitting application.', detail: error.message });
+    }
+});
+
+app.get('/api/my/verified-chef-application', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ message: 'userId required.' });
+
+    try {
+        const result = await pool.query(`
+            SELECT *
+            FROM "VerifiedChefApplication"
+            WHERE user_id = $1
+            ORDER BY submitted_at DESC
+            LIMIT 1;
+        `, [userId]);
+
+        res.json(result.rows[0] || null);
+    } catch (error) {
+        console.error('MY VERIFIED CHEF APPLICATION ERROR:', error);
+        res.status(500).json({ message: 'Error fetching application.', detail: error.message });
+    }
+});
+
+app.get('/api/admin/verified-chef-applications/summary', async (req, res) => {
+    const { adminId } = req.query;
+    if (!adminId) return res.status(400).json({ message: 'adminId required.' });
+
+    try {
+        const admin = await pool.query('SELECT user_id FROM "Administrator" WHERE user_id = $1', [adminId]);
+        if (admin.rows.length === 0) {
+            return res.status(403).json({ message: 'Administrator access required.' });
+        }
+
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
+                COUNT(*) FILTER (WHERE status = 'approved') AS approved_count,
+                COUNT(*) FILTER (WHERE status = 'rejected') AS rejected_count,
+                (SELECT COUNT(*) FROM "VerifiedChef" WHERE status IN ('active', 'approved')) AS verified_chef_count
+            FROM "VerifiedChefApplication";
+        `);
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('ADMIN APPLICATION SUMMARY ERROR:', error);
+        res.status(500).json({ message: 'Error fetching summary.', detail: error.message });
+    }
+});
+
+app.get('/api/admin/verified-chef-applications', async (req, res) => {
+    const { adminId, status } = req.query;
+    if (!adminId) return res.status(400).json({ message: 'adminId required.' });
+
+    try {
+        const admin = await pool.query('SELECT user_id FROM "Administrator" WHERE user_id = $1', [adminId]);
+        if (admin.rows.length === 0) {
+            return res.status(403).json({ message: 'Administrator access required.' });
+        }
+
+        const params = [];
+        let where = '';
+        if (['pending', 'approved', 'rejected'].includes(status)) {
+            params.push(status);
+            where = 'WHERE vca.status = $1';
+        }
+
+        const result = await pool.query(`
+            SELECT
+                vca.*,
+                u.username,
+                u.email,
+                reviewer.username AS reviewed_by_username
+            FROM "VerifiedChefApplication" vca
+            JOIN "User" u ON u.user_id = vca.user_id
+            LEFT JOIN "User" reviewer ON reviewer.user_id = vca.reviewed_by
+            ${where}
+            ORDER BY
+                CASE WHEN vca.status = 'pending' THEN 0 ELSE 1 END,
+                vca.submitted_at DESC;
+        `, params);
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('ADMIN APPLICATION LIST ERROR:', error);
+        res.status(500).json({ message: 'Error fetching applications.', detail: error.message });
+    }
+});
+
+app.get('/api/admin/verified-chef-applications/:applicationId', async (req, res) => {
+    const { adminId } = req.query;
+    const { applicationId } = req.params;
+    if (!adminId) return res.status(400).json({ message: 'adminId required.' });
+
+    try {
+        const admin = await pool.query('SELECT user_id FROM "Administrator" WHERE user_id = $1', [adminId]);
+        if (admin.rows.length === 0) {
+            return res.status(403).json({ message: 'Administrator access required.' });
+        }
+
+        const result = await pool.query(`
+            SELECT vca.*, u.username, u.email
+            FROM "VerifiedChefApplication" vca
+            JOIN "User" u ON u.user_id = vca.user_id
+            WHERE vca.application_id = $1;
+        `, [applicationId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Application not found.' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('ADMIN APPLICATION DETAIL ERROR:', error);
+        res.status(500).json({ message: 'Error fetching application.', detail: error.message });
+    }
+});
+
+app.patch('/api/admin/verified-chef-applications/:applicationId/status', async (req, res) => {
+    const { applicationId } = req.params;
+    const { adminId, status, admin_note } = req.body;
+
+    if (!adminId || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ message: 'adminId and a valid status are required.' });
+    }
+
+    let client;
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const admin = await client.query('SELECT user_id FROM "Administrator" WHERE user_id = $1', [adminId]);
+        if (admin.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ message: 'Administrator access required.' });
+        }
+
+        const appResult = await client.query(
+            'SELECT * FROM "VerifiedChefApplication" WHERE application_id = $1 FOR UPDATE',
+            [applicationId]
+        );
+        if (appResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'Application not found.' });
+        }
+
+        const application = appResult.rows[0];
+        if (application.status !== 'pending') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: 'Only pending applications can be reviewed.' });
+        }
+
+        const updated = await client.query(`
+            UPDATE "VerifiedChefApplication"
+            SET status = $1,
+                admin_note = $2,
+                reviewed_at = CURRENT_TIMESTAMP,
+                reviewed_by = $3
+            WHERE application_id = $4
+            RETURNING *;
+        `, [status, admin_note || null, adminId, applicationId]);
+
+        if (status === 'approved') {
+            await client.query(
+                'INSERT INTO "RecipeCreator" (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+                [application.user_id]
+            );
+            await client.query(`
+                INSERT INTO "VerifiedChef" (user_id, verification_date, status)
+                VALUES ($1, CURRENT_DATE, 'approved')
+                ON CONFLICT (user_id)
+                DO UPDATE SET verification_date = CURRENT_DATE, status = 'approved';
+            `, [application.user_id]);
+        }
+
+        await client.query('COMMIT');
+        res.json(updated.rows[0]);
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('ADMIN APPLICATION STATUS ERROR:', error);
+        res.status(500).json({ message: 'Error reviewing application.', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+app.get('/api/users/:id/role', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT u.user_id, u.username, u.email,
+            CASE
+                WHEN a.user_id IS NOT NULL THEN 'Administrator'
+                WHEN vc.user_id IS NOT NULL AND vc.status IN ('active', 'approved') THEN 'Verified Chef'
+                WHEN hc.user_id IS NOT NULL THEN 'Home Cook'
+                WHEN ls.user_id IS NOT NULL THEN 'Local Supplier'
+                ELSE 'User'
+            END AS role
+            FROM "User" u
+            LEFT JOIN "Administrator" a ON a.user_id = u.user_id
+            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id
+            LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "LocalSupplier" ls ON ls.user_id = u.user_id
+            WHERE u.user_id = $1;
+        `, [req.params.id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('USER ROLE ERROR:', error);
+        res.status(500).json({ message: 'Error fetching user role.', detail: error.message });
+    }
+});
+
+// ADMIN OPERATIONS DASHBOARD
+app.get('/api/admin/dashboard-summary', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                (SELECT COUNT(*) FROM "VerifiedChefApplication" WHERE status = 'pending')::int AS pending_applications,
+                (SELECT COUNT(*) FROM "HomeCook")::int AS home_cooks,
+                (SELECT COUNT(*) FROM "VerifiedChef" WHERE status IN ('active', 'approved'))::int AS verified_chefs,
+                (SELECT COUNT(*) FROM "Recipe")::int AS total_recipes,
+                (SELECT COUNT(*) FROM "KitchenChallenge" WHERE start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE)::int AS active_challenges,
+                (SELECT COUNT(*) FROM "LocalSupplier")::int AS suppliers,
+                (SELECT COUNT(*) FROM "Comment")::int AS comments,
+                (SELECT COUNT(*) FROM "Order")::int AS orders;
+        `);
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN SUMMARY ERROR:');
+    }
+});
+
+app.get('/api/admin/users', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                u.user_id,
+                u.username,
+                u.email,
+                u.join_date,
+                CASE
+                    WHEN a.user_id IS NOT NULL THEN 'Administrator'
+                    WHEN vc.user_id IS NOT NULL AND vc.status IN ('active', 'approved') THEN 'Verified Chef'
+                    WHEN hc.user_id IS NOT NULL THEN 'Home Cook'
+                    WHEN ls.user_id IS NOT NULL THEN 'Local Supplier'
+                    ELSE 'User'
+                END AS role
+            FROM "User" u
+            LEFT JOIN "Administrator" a ON a.user_id = u.user_id
+            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id
+            LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "LocalSupplier" ls ON ls.user_id = u.user_id
+            ORDER BY u.join_date DESC
+            LIMIT 100;
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN USERS ERROR:');
+    }
+});
+
+app.get('/api/admin/suppliers', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                ls.user_id,
+                u.username,
+                u.email,
+                ls.location_name,
+                ls.address,
+                COUNT(si.inventory_id)::int AS inventory_items
+            FROM "LocalSupplier" ls
+            JOIN "User" u ON u.user_id = ls.user_id
+            LEFT JOIN "SupplierInventory" si ON si.supplier_id = ls.user_id
+            GROUP BY ls.user_id, u.username, u.email, ls.location_name, ls.address
+            ORDER BY ls.location_name ASC;
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN SUPPLIERS ERROR:');
+    }
+});
+
+app.get('/api/admin/challenges', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                kc.challenge_id,
+                kc.title,
+                kc.description,
+                kc.start_date,
+                kc.end_date,
+                COUNT(DISTINCT hcc.user_id)::int AS participants,
+                CASE
+                    WHEN kc.start_date > CURRENT_DATE THEN 'upcoming'
+                    WHEN kc.end_date < CURRENT_DATE THEN 'completed'
+                    ELSE 'active'
+                END AS status
+            FROM "KitchenChallenge" kc
+            LEFT JOIN "HomeCook_Challenge" hcc ON hcc.challenge_id = kc.challenge_id
+            GROUP BY kc.challenge_id
+            ORDER BY kc.start_date DESC;
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN CHALLENGES ERROR:');
+    }
+});
+
+app.delete('/api/admin/challenges/:challengeId', async (req, res) => {
+    const { adminId } = req.body;
+    const { challengeId } = req.params;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(
+            'DELETE FROM "KitchenChallenge" WHERE challenge_id = $1 RETURNING challenge_id',
+            [challengeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Challenge not found.' });
+        }
+
+        res.json({ message: 'Challenge removed.' });
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN DELETE CHALLENGE ERROR:');
+    }
+});
+
+app.get('/api/admin/recipes', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                r.recipe_id,
+                r.title,
+                r.visibility,
+                r.creation_time,
+                r.difficulty_level,
+                u.username AS creator_name,
+                COALESCE(ROUND(AVG(c.rating)::numeric, 1), 0)::text AS avg_rating,
+                COUNT(c.comment_id)::int AS comments
+            FROM "Recipe" r
+            JOIN "User" u ON u.user_id = r.creator_id
+            LEFT JOIN "Comment" c ON c.recipe_id = r.recipe_id
+            GROUP BY r.recipe_id, u.username
+            ORDER BY r.creation_time DESC
+            LIMIT 100;
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN RECIPES ERROR:');
+    }
+});
+
+app.patch('/api/admin/recipes/:recipeId/visibility', async (req, res) => {
+    const { adminId, visibility } = req.body;
+    const { recipeId } = req.params;
+
+    if (!['public', 'private'].includes(visibility)) {
+        return res.status(400).json({ message: 'visibility must be public or private.' });
+    }
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(
+            'UPDATE "Recipe" SET visibility = $1 WHERE recipe_id = $2 RETURNING recipe_id, title, visibility',
+            [visibility, recipeId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Recipe not found.' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN RECIPE VISIBILITY ERROR:');
+    }
+});
+
+app.get('/api/admin/comments', async (req, res) => {
+    const { adminId } = req.query;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(`
+            SELECT
+                c.comment_id,
+                c.comment_text,
+                c.review_text,
+                c.rating,
+                c.creation_time,
+                u.username,
+                r.title AS recipe_title
+            FROM "Comment" c
+            JOIN "User" u ON u.user_id = c.user_id
+            JOIN "Recipe" r ON r.recipe_id = c.recipe_id
+            ORDER BY c.creation_time DESC
+            LIMIT 100;
+        `);
+
+        res.json(result.rows);
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN COMMENTS ERROR:');
+    }
+});
+
+app.delete('/api/admin/comments/:commentId', async (req, res) => {
+    const { adminId } = req.body;
+    const { commentId } = req.params;
+
+    try {
+        await requireAdmin(adminId);
+
+        const result = await pool.query(
+            'DELETE FROM "Comment" WHERE comment_id = $1 RETURNING comment_id',
+            [commentId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Comment not found.' });
+        }
+
+        res.json({ message: 'Comment removed.' });
+    } catch (error) {
+        handleAdminError(res, error, 'ADMIN DELETE COMMENT ERROR:');
     }
 });
 
@@ -317,13 +995,32 @@ app.get('/api/creator/royalty-dashboard', async (req, res) => {
     if (!userId) return res.status(401).json({ message: 'Authentication required.' });
 
     try {
-        const creatorCheck = await pool.query(
-            'SELECT user_id FROM "RecipeCreator" WHERE user_id = $1',
+        const creatorCheck = await pool.query(`
+            SELECT
+                rc.user_id AS recipe_creator_id,
+                hc.user_id AS home_cook_id,
+                vc.user_id AS verified_chef_id
+            FROM "User" u
+            LEFT JOIN "RecipeCreator" rc ON rc.user_id = u.user_id
+            LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id AND vc.status IN ('active', 'approved')
+            WHERE u.user_id = $1
+        `,
             [userId]
         );
 
-        if (creatorCheck.rows.length === 0) {
+        if (
+            creatorCheck.rows.length === 0 ||
+            (!creatorCheck.rows[0].recipe_creator_id && !creatorCheck.rows[0].home_cook_id && !creatorCheck.rows[0].verified_chef_id)
+        ) {
             return res.status(403).json({ message: 'Creator royalty dashboard is only available to recipe creators.' });
+        }
+
+        if (!creatorCheck.rows[0].recipe_creator_id) {
+            await pool.query(
+                'INSERT INTO "RecipeCreator" (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
+                [userId]
+            );
         }
 
         const perRecipeQuery = `
@@ -1195,11 +1892,8 @@ app.post('/api/checkout', async (req, res) => {
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
-        // 2. Create Cart
-        const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
-        const cartId = cartRes.rows[0].cart_id;
-
-        // 3. Process each recipe in the cart and its selected ingredients
+        // 2. Process each recipe/marketplace item as its own cart so recipe
+        // purchases can be counted correctly in creator royalties.
         if (items && items.length > 0) {
             console.log(`\x1b[32m[CHECKOUT START]\x1b[0m User: ${effectiveUserId}`);
             
@@ -1211,6 +1905,16 @@ app.post('/api/checkout', async (req, res) => {
                 const servingsFactor = isIngredientOnly
                     ? Number(cartEntry.servings || 1)
                     : Number(cartEntry.servings || 2) / Number(cartEntry.recipe.base_servings || 2);
+                const recipeId = isIngredientOnly
+                    ? null
+                    : parseInt(cartEntry.recipe.id || cartEntry.recipe.recipe_id) || null;
+                const targetServings = Math.max(1, parseInt(cartEntry.servings || 1) || 1);
+                const itemTotal = Number(cartEntry.recipe.finalPrice ?? cartEntry.totalPrice ?? totalAmount ?? 0);
+                const cartRes = await client.query(
+                    'INSERT INTO "Cart" (user_id, recipe_id, target_servings) VALUES ($1, $2, $3) RETURNING cart_id',
+                    [effectiveUserId, recipeId, targetServings]
+                );
+                const cartId = cartRes.rows[0].cart_id;
 
                 for (const ing of ingredients) {
                     const rawId = ing.id;
@@ -1276,11 +1980,22 @@ app.post('/api/checkout', async (req, res) => {
                         }
                     }
                 }
-            }
-        }
 
-        // 4. Create Order
-        await client.query('INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)', [cartId, totalAmount || 0, 'pending']);
+                await client.query(
+                    'INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)',
+                    [cartId, itemTotal || 0, 'confirmed']
+                );
+            }
+        } else {
+            const cartRes = await client.query(
+                'INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id',
+                [effectiveUserId]
+            );
+            await client.query(
+                'INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)',
+                [cartRes.rows[0].cart_id, totalAmount || 0, 'confirmed']
+            );
+        }
 
         await client.query('COMMIT');
         res.json({ message: 'Checkout successful! Order confirmed and inventory deducted.' });
@@ -1500,7 +2215,8 @@ app.get('/api/challenges/:id/recipes', async (req, res) => {
 
 // POST /api/challenges — create new challenge (Verified Chef only)
 app.post('/api/challenges', async (req, res) => {
-    const { creator_id, title, description, start_date, end_date } = req.body;
+    const creator_id = req.body.creator_id || req.body.userId;
+    const { title, description, start_date, end_date } = req.body;
 
     if (!creator_id || !title || !start_date || !end_date) {
         return res.status(400).json({ message: 'Missing required fields' });
@@ -1509,7 +2225,7 @@ app.post('/api/challenges', async (req, res) => {
     try {
         // Verify user is a Verified Chef
         const chefCheck = await pool.query(
-            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1',
+            'SELECT user_id FROM "VerifiedChef" WHERE user_id = $1 AND status IN (\'active\', \'approved\')',
             [creator_id]
         );
 
@@ -1903,10 +2619,16 @@ app.get('/api/leaderboard/global', async (req, res) => {
                     ) FILTER (WHERE kc.challenge_id IS NOT NULL),
                     '[]'::json
                 ) AS won_challenges
-            FROM "HomeCook" hc
-            JOIN "User" u ON u.user_id = hc.user_id
+            FROM "User" u
+            LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
+            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id AND vc.status IN ('active', 'approved')
+            LEFT JOIN "Administrator" a ON a.user_id = u.user_id
+            LEFT JOIN "LocalSupplier" ls ON ls.user_id = u.user_id
             LEFT JOIN "KitchenChallenge" kc ON kc.winner_id = u.user_id
             LEFT JOIN "ChallengeReward" cr ON cr.user_id = u.user_id AND cr.challenge_id = kc.challenge_id
+            WHERE a.user_id IS NULL
+              AND ls.user_id IS NULL
+              AND (hc.user_id IS NOT NULL OR vc.user_id IS NOT NULL)
             GROUP BY u.user_id, u.username, u.total
             ORDER BY challenges_won DESC, cooked_count DESC, meal_coins DESC;
         `;
@@ -2007,6 +2729,13 @@ app.get('/api/users/:id/rewards', async (req, res) => {
     }
 });
 
+app.use((error, _req, res, next) => {
+    if (error instanceof multer.MulterError || error.message?.includes('Only PDF')) {
+        return res.status(400).json({ message: error.message });
+    }
+    next(error);
+});
+
 // Fallback to index.html for client-side routing (must be after all /api routes)
 app.use((req, res) => {
     res.sendFile('dist/index.html', { root: __dirname });
@@ -2018,6 +2747,9 @@ app.listen(PORT, async () => {
     try {
         await pool.query('SELECT NOW()');
         console.log('PostgreSQL Connected Successfully');
+        await ensureApplicationUploadColumns();
+        await ensureChallengeWorkflowSchema();
+        await ensureMockAdminAccount();
         await seedChallengesIfEmpty();
     } catch (err) {
         console.error('PostgreSQL Connection Error:', err.message);

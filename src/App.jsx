@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ListPlus } from 'lucide-react';
 import { AuthView } from './components/Auth/AuthView';
 import { Navbar } from './components/Navigation/Navbar';
 import { ExploreView } from './components/Recipes/ExploreView';
@@ -15,24 +14,27 @@ import { RecipeCreateView } from './components/Recipes/RecipeCreateView';
 import { ProfileView } from './components/Profile/ProfileView';
 import { SupplierMarketplaceView } from './components/Marketplace/SupplierMarketplaceView';
 import { ChallengeManagementView } from './components/Dashboard/ChallengeManagementView';
+import { VerifiedChefApplicationPage } from './components/Dashboard/VerifiedChefApplicationPage';
+import { AdminVerifiedChefApplicationsPage } from './components/Dashboard/AdminVerifiedChefApplicationsPage';
+import { AdminDashboardPage } from './components/Dashboard/AdminDashboardPage';
 
 // Authentication is handled server-side via POST /api/auth/login and POST /api/auth/register.
 // Credentials are never stored in the frontend.
 
-// --- Main App Setup ---
 export default function App() {
+  const isAuthPath = () => typeof window !== 'undefined' && window.location.pathname === '/auth';
+
   const [user, setUser] = useState(() => {
     if (typeof window !== 'undefined') {
       const savedUser = localStorage.getItem('user');
       if (savedUser) return JSON.parse(savedUser);
     }
     return null;
-  }); // Auth State
-  const [guest, setGuest] = useState(() => localStorage.getItem('guest') === 'true');
-  const [currentTab, setCurrentTab] = useState('explore');
+  });
+  const [guest, setGuest] = useState(() => !isAuthPath() && localStorage.getItem('guest') === 'true');
+  const [currentTab, setCurrentTab] = useState(() => isAuthPath() ? 'auth' : 'explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
 
-  // Per-user cart: keyed by user ID in localStorage so carts are never shared.
   const cartKey = user ? `cart_${user.id}` : null;
   const [cart, setCart] = useState(() => {
     if (!user) return [];
@@ -60,7 +62,6 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Persist User State
   useEffect(() => {
     if (user) {
       localStorage.setItem('user', JSON.stringify(user));
@@ -75,14 +76,19 @@ export default function App() {
     else localStorage.removeItem('guest');
   }, [guest]);
 
-  // Fetch Meal Lists when user logs in
   useEffect(() => {
     if (user?.id) {
       fetchMealLists();
     }
   }, [user?.id]);
 
-  // Reload cart from localStorage whenever the logged-in user changes
+  useEffect(() => {
+    if (user?.role === 'Administrator' && !['admin-dashboard', 'admin-applications', 'auth'].includes(currentTab)) {
+      setCurrentTab('admin-dashboard');
+      setSelectedRecipe(null);
+    }
+  }, [user?.role, currentTab]);
+
   useEffect(() => {
     if (user?.id) {
       try {
@@ -96,12 +102,17 @@ export default function App() {
     }
   }, [user?.id]);
 
-  // Persist cart to localStorage on every change
   useEffect(() => {
     if (cartKey) {
       localStorage.setItem(cartKey, JSON.stringify(cart));
     }
   }, [cart, cartKey]);
+
+  const routeAfterLogin = (role) => {
+    if (role === 'Administrator') return 'admin-dashboard';
+    if (role === 'Local Supplier') return 'inventory';
+    return 'explore';
+  };
 
   const fetchMealLists = async () => {
     try {
@@ -133,59 +144,93 @@ export default function App() {
     setCurrentTab('explore');
   };
 
+  const handleLogin = (userData) => {
+    setUser(userData);
+    setGuest(false);
+    window.history.replaceState({}, '', '/');
+    setCurrentTab(routeAfterLogin(userData.role));
+  };
+
+  const handleLogout = () => {
+    if (cartKey) localStorage.removeItem(cartKey);
+    setUser(null);
+    setGuest(false);
+    setCart([]);
+    window.history.replaceState({}, '', '/');
+    setCurrentTab('explore');
+  };
+
+  const openAuth = () => {
+    localStorage.removeItem('guest');
+    window.history.pushState({}, '', '/auth');
+    setGuest(false);
+    setCurrentTab('auth');
+    setSelectedRecipe(null);
+  };
+
+  const continueAsGuest = () => {
+    window.history.replaceState({}, '', '/');
+    setGuest(true);
+    setCurrentTab('explore');
+  };
+
+  const showingAuth = !user && (isAuthPath() || !guest || currentTab === 'auth');
+
   return (
     <div className={`min-h-screen bg-[#F8F9FA] dark:bg-slate-900 selection:bg-emerald-100 dark:selection:bg-emerald-900 font-sans text-slate-900 dark:text-white overflow-x-hidden ${darkMode ? 'dark' : ''}`}>
-      {/* Full-screen landing: show when no user and not guest */}
-      {!user && !guest ? (
+      {showingAuth ? (
         <AuthView
-          onLogin={(userData) => { setUser(userData); setGuest(false); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }}
-          onGuest={() => { setGuest(true); setCurrentTab('explore'); }}
+          onLogin={handleLogin}
+          onGuest={continueAsGuest}
           darkMode={darkMode}
           setDarkMode={setDarkMode}
         />
       ) : (
-      <>
-      <Navbar
-        user={user}
-        activeTab={currentTab}
-        setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
-        cartCount={cart.length}
-        onLogout={() => { if (cartKey) localStorage.removeItem(cartKey); setUser(null); setGuest(false); setCart([]); setCurrentTab('explore'); }}
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-      />
+        <>
+          <Navbar
+            user={user}
+            activeTab={currentTab}
+            setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
+            onSignIn={openAuth}
+            cartCount={cart.length}
+            onLogout={handleLogout}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+          />
 
-      <main className="max-w-7xl mx-auto px-6 py-4">
-        {selectedRecipe ? (
-          <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
-        ) : (
-          <>
-          {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setGuest(false); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }} onGuest={() => { setGuest(true); setCurrentTab('explore'); }} />}
-            {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
-            {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
-            {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
-            {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
-            {currentTab === 'orders' && user?.role === 'Local Supplier' && <SupplierOrdersView user={user} />}
+          <main className="max-w-7xl mx-auto px-6 py-4">
+            {selectedRecipe ? (
+              <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
+            ) : (
+              <>
+                {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
+                {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
+                {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
+                {currentTab === 'inventory' && user?.role === 'Local Supplier' && <SupplierInventoryView user={user} />}
+                {currentTab === 'orders' && user?.role === 'Local Supplier' && <SupplierOrdersView user={user} />}
 
-            {currentTab === 'challenges' && <ChallengesView user={user} />}
-            {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
-            {currentTab === 'manage-challenges' && user?.role === 'Verified Chef' && <ChallengeManagementView user={user} />}
-            {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
-            {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
-            {currentTab === 'create-recipe' && (user?.role === 'Verified Chef' || user?.role === 'Home Cook') && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
-            {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
-          </>
-        )}
-      </main>
+                {currentTab === 'challenges' && <ChallengesView user={user} />}
+                {currentTab === 'leaderboards' && <LeaderboardView user={user} />}
+                {currentTab === 'manage-challenges' && user?.role === 'Verified Chef' && <ChallengeManagementView user={user} />}
+                {currentTab === 'my-meals' && <MealListView user={user} mealLists={mealLists} onRefresh={fetchMealLists} />}
+                {currentTab === 'dashboard' && ['Home Cook', 'Verified Chef'].includes(user?.role) && <CreatorRoyaltyDashboardView user={user} />}
+                {currentTab === 'create-recipe' && ['Verified Chef', 'Home Cook'].includes(user?.role) && <RecipeCreateView user={user} onCreated={() => setCurrentTab('explore')} />}
+                {currentTab === 'verified-chef-application' && user?.role === 'Home Cook' && <VerifiedChefApplicationPage user={user} setUser={setUser} />}
+                {currentTab === 'admin-dashboard' && user?.role === 'Administrator' && <AdminDashboardPage user={user} setTab={setCurrentTab} />}
+                {currentTab === 'admin-applications' && user?.role === 'Administrator' && <AdminVerifiedChefApplicationsPage user={user} />}
+                {currentTab === 'profile' && <ProfileView user={user} setUser={setUser} />}
+              </>
+            )}
+          </main>
 
-      <footer className="mt-24 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 py-12 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center opacity-40 grayscale text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-600">
-          <span>©️ 2026 MealDeal Platform</span>
-          <span>Bilkent CS 353 Database Systems</span>
-          <span>{user ? `Logged in as: ${user.role}` : 'Browsing as Guest'}</span>
-        </div>
-      </footer>
-      </>
+          <footer className="mt-24 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 py-12 px-6">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center opacity-40 grayscale text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-600">
+              <span>©️ 2026 MealDeal Platform</span>
+              <span>Bilkent CS 353 Database Systems</span>
+              <span>{user ? `Logged in as: ${user.role}` : 'Browsing as Guest'}</span>
+            </div>
+          </footer>
+        </>
       )}
     </div>
   );

@@ -21,6 +21,7 @@ DROP TABLE IF EXISTS "Recipe_Ingredient" CASCADE;
 DROP TABLE IF EXISTS "Ingredient" CASCADE;
 DROP TABLE IF EXISTS "Recipe" CASCADE;
 DROP TABLE IF EXISTS "RecipeCreator" CASCADE;
+DROP TABLE IF EXISTS "VerifiedChefApplication" CASCADE;
 DROP TABLE IF EXISTS "VerifiedChef" CASCADE;
 DROP TABLE IF EXISTS "HomeCook" CASCADE;
 DROP TABLE IF EXISTS "LocalSupplier" CASCADE;
@@ -71,6 +72,33 @@ CREATE TABLE "VerifiedChef" (
 CREATE TABLE "HomeCook" (
     user_id    INT  PRIMARY KEY REFERENCES "RecipeCreator"(user_id) ON DELETE CASCADE
 );
+
+CREATE TABLE "VerifiedChefApplication" (
+    application_id          SERIAL       PRIMARY KEY,
+    user_id                 INT          NOT NULL REFERENCES "HomeCook"(user_id) ON DELETE CASCADE,
+    full_name               VARCHAR(120) NOT NULL,
+    biography               TEXT,
+    cooking_experience      TEXT,
+    education               TEXT,
+    certificates            TEXT,
+    awards                  TEXT,
+    professional_experience TEXT,
+    portfolio_url           VARCHAR(255),
+    cv_file_path            VARCHAR(255),
+    certificate_file_path   VARCHAR(255),
+    cv_text                 TEXT,
+    status                  VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    admin_note              TEXT,
+    submitted_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at             TIMESTAMP,
+    reviewed_by             INT          REFERENCES "Administrator"(user_id) ON DELETE SET NULL,
+    CONSTRAINT verified_chef_application_status_check
+        CHECK (status IN ('pending', 'approved', 'rejected'))
+);
+
+CREATE UNIQUE INDEX one_pending_verified_chef_application_per_user
+    ON "VerifiedChefApplication"(user_id)
+    WHERE status = 'pending';
 
 -- =============================================================
 -- INGREDIENT & SUBSTITUTION

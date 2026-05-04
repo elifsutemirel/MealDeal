@@ -1,30 +1,22 @@
 import React, { useState } from 'react';
-import { Users, Sun, Moon } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
 
 export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [role, setRole] = useState('Home Cook');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
-  const [address, setAddress] = useState('');
-  const [locationName, setLocationName] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setInfoMsg('');
-    
-    // Validations
+
     if (!isLogin && (!username || !email || !password)) {
       setError('Please fill in all fields.');
-      return;
-    }
-    if (!isLogin && role === 'Local Supplier' && (!address || !locationName)) {
-      setError('Please provide address and location name for Local Supplier.');
       return;
     }
     if (!email || !password) {
@@ -39,11 +31,10 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
       setError('Username must be at least 3 characters long.');
       return;
     }
-    
+
     setLoading(true);
     try {
       if (isLogin) {
-        // LOGIN — calls backend which runs the SQL login query
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -51,17 +42,16 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Invalid email or password.');
-        onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
+        onLogin({ id: data.user_id, name: data.username, username: data.username, role: data.role, email: data.email });
       } else {
-        // REGISTER — calls backend which runs the SQL registration queries
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password, role, address, location_name: locationName }),
+          body: JSON.stringify({ username, email, password }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message + (data.detail ? ': ' + data.detail : '') || 'Registration failed.');
-        onLogin({ id: data.user_id, name: data.username, role: data.role, email: data.email });
+        onLogin({ id: data.user_id, name: data.username, username: data.username, role: data.role, email: data.email });
       }
     } catch (err) {
       setError(err.message);
@@ -72,7 +62,6 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col relative overflow-hidden">
-      {/* ── Animated background ── */}
       <style>{`
         @keyframes floatA { 0%,100%{transform:translateY(0) rotate(0deg);opacity:.18} 50%{transform:translateY(-28px) rotate(8deg);opacity:.32} }
         @keyframes floatB { 0%,100%{transform:translateY(0) rotate(0deg);opacity:.14} 50%{transform:translateY(-20px) rotate(-6deg);opacity:.26} }
@@ -95,28 +84,22 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
         .fi-10{animation:floatA 10.5s 3.5s ease-in-out infinite;}
       `}</style>
 
-      {/* Glowing blobs */}
       <div className="blob1 absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full bg-emerald-500 opacity-[0.07] blur-[100px] pointer-events-none" />
       <div className="blob2 absolute -bottom-40 -right-40 w-[560px] h-[560px] rounded-full bg-teal-400 opacity-[0.07] blur-[120px] pointer-events-none" />
       <div className="blob3 absolute top-1/2 -translate-y-1/2 right-[10%] w-[320px] h-[320px] rounded-full bg-emerald-600 opacity-[0.05] blur-[90px] pointer-events-none" />
+      <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
 
-      {/* Dot grid overlay */}
-      <div className="absolute inset-0 pointer-events-none"
-        style={{backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize:'32px 32px'}} />
+      <span className="food-icon fi-1" style={{ top: '8%', left: '5%' }}>🍅</span>
+      <span className="food-icon fi-2" style={{ top: '15%', left: '88%' }}>🥑</span>
+      <span className="food-icon fi-3" style={{ top: '72%', left: '7%' }}>🌿</span>
+      <span className="food-icon fi-4" style={{ top: '82%', left: '90%' }}>🍋</span>
+      <span className="food-icon fi-5" style={{ top: '45%', left: '3%' }}>🫒</span>
+      <span className="food-icon fi-6" style={{ top: '30%', left: '93%' }}>🧅</span>
+      <span className="food-icon fi-7" style={{ top: '60%', left: '92%' }}>🌶️</span>
+      <span className="food-icon fi-8" style={{ top: '55%', left: '4%' }}>🧄</span>
+      <span className="food-icon fi-9" style={{ top: '22%', left: '14%' }}>🫑</span>
+      <span className="food-icon fi-10" style={{ top: '88%', left: '50%' }}>🍄</span>
 
-      {/* Floating food icons */}
-      <span className="food-icon fi-1"  style={{top:'8%',  left:'5%' }}>🍅</span>
-      <span className="food-icon fi-2"  style={{top:'15%', left:'88%'}}>🥑</span>
-      <span className="food-icon fi-3"  style={{top:'72%', left:'7%' }}>🌿</span>
-      <span className="food-icon fi-4"  style={{top:'82%', left:'90%'}}>🍋</span>
-      <span className="food-icon fi-5"  style={{top:'45%', left:'3%' }}>🫒</span>
-      <span className="food-icon fi-6"  style={{top:'30%', left:'93%'}}>🧅</span>
-      <span className="food-icon fi-7"  style={{top:'60%', left:'92%'}}>🌶️</span>
-      <span className="food-icon fi-8"  style={{top:'55%', left:'4%' }}>🧄</span>
-      <span className="food-icon fi-9"  style={{top:'22%', left:'14%'}}>🫑</span>
-      <span className="food-icon fi-10" style={{top:'88%', left:'50%'}}>🍄</span>
-
-      {/* Top bar */}
       <div className="flex items-center justify-between px-8 py-5">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-white font-black text-lg">M</div>
@@ -132,10 +115,8 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
         )}
       </div>
 
-      {/* Main content */}
       <div className="flex-1 flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
-          {/* Card */}
           <div className="bg-slate-900 rounded-[2rem] border border-slate-800 shadow-2xl overflow-hidden">
             <div className="h-1 bg-emerald-500 w-full" />
             <div className="p-8">
@@ -143,7 +124,7 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                 {isLogin ? 'Welcome Back' : 'Create an Account'}
               </h2>
               <p className="text-sm text-slate-400 text-center mb-7 font-medium">
-                {isLogin ? 'Log in to manage your meals and orders.' : 'Join the farm-to-table marketplace.'}
+                {isLogin ? 'Log in to manage your meals and orders.' : 'New public accounts are created as Home Cooks.'}
               </p>
 
               {error && (
@@ -171,51 +152,10 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                         className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
                       />
                     </div>
-                    <div>
-                      <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Select Role</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
-                          <button
-                            type="button"
-                            key={r}
-                            onClick={() => setRole(r)}
-                            className={`py-2.5 px-2 text-xs font-bold rounded-xl border transition-all ${
-                              role === r
-                                ? 'bg-emerald-500 border-emerald-500 text-white'
-                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
-                            }`}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="p-4 rounded-2xl bg-emerald-900/20 border border-emerald-700/40">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Role</p>
+                      <p className="text-sm font-bold text-emerald-100 mt-1">Home Cook</p>
                     </div>
-                    {role === 'Local Supplier' && (
-                      <>
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Address</label>
-                          <input
-                            required
-                            type="text"
-                            placeholder="123 Farm Road, Green Valley"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Location Name</label>
-                          <input
-                            required
-                            type="text"
-                            placeholder="Green Valley Farms"
-                            value={locationName}
-                            onChange={(e) => setLocationName(e.target.value)}
-                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
-                          />
-                        </div>
-                      </>
-                    )}
                   </>
                 )}
 
@@ -262,14 +202,12 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                 </button>
               </form>
 
-              {/* Divider */}
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px bg-slate-800" />
                 <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">or</span>
                 <div className="flex-1 h-px bg-slate-800" />
               </div>
 
-              {/* Continue as Guest */}
               {onGuest && (
                 <button
                   onClick={onGuest}
@@ -282,7 +220,7 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
               <p className="text-center text-xs font-bold text-slate-500 mt-6">
                 {isLogin ? "Don't have an account? " : 'Already have an account? '}
                 <button
-                  onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setAddress(''); setLocationName(''); }}
+                  onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); }}
                   className="text-emerald-500 hover:underline"
                 >
                   {isLogin ? 'Register' : 'Log In'}
@@ -291,7 +229,6 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
             </div>
           </div>
 
-          {/* Guest notice */}
           {onGuest && (
             <p className="text-center text-[11px] text-slate-600 mt-5 font-medium">
               Guests can browse recipes, challenges and the leaderboard.<br />

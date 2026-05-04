@@ -78,7 +78,7 @@ export const ChallengesView = ({ user }) => {
   const handleJoin = async (e, challengeId) => {
     e.stopPropagation();
     if (!user) return alert('Please sign in to join a challenge.');
-    if (user.role !== 'Home Cook') {
+    if (!['Home Cook', 'Verified Chef'].includes(user.role)) {
       return alert('Only Home Cooks can join challenges.');
     }
 
@@ -195,7 +195,7 @@ export const ChallengesView = ({ user }) => {
                 { key: 'active', label: 'Active' },
                 { key: 'upcoming', label: 'Upcoming' },
                 { key: 'completed', label: 'Completed' },
-                ...(user?.role === 'Home Cook' ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
+                ...(['Home Cook', 'Verified Chef'].includes(user?.role) ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
               ].map(({ key: f, label }) => (
                 <button
                   key={f}
@@ -231,7 +231,7 @@ export const ChallengesView = ({ user }) => {
 
               const isJoined = joinedIds.has(challenge.challenge_id);
               const isJoining = joiningId === challenge.challenge_id;
-              const isHomeCook = user?.role === 'Home Cook';
+              const canJoinChallenge = ['Home Cook', 'Verified Chef'].includes(user?.role);
               const status = getChallengeStatus(challenge);
               
               const endDate = new Date(challenge.end_date);
@@ -329,13 +329,13 @@ export const ChallengesView = ({ user }) => {
                           }
                           handleJoin(e, challenge.challenge_id);
                         }}
-                        disabled={isJoining || isJoined || !isHomeCook || status !== 'active'}
+                        disabled={isJoining || isJoined || !canJoinChallenge || status !== 'active'}
                         className={`px-4 py-2 rounded-xl font-black uppercase text-[9px] transition-all flex items-center gap-1.5
                           ${status !== 'active'
                             ? 'bg-tertiary text-secondary dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed'
                             : isJoined
                               ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 cursor-default border border-emerald-200 dark:border-emerald-800'
-                              : isHomeCook
+                              : canJoinChallenge
                                 ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
                                 : 'bg-tertiary text-secondary dark:bg-slate-800 cursor-not-allowed opacity-60'
                           }`}

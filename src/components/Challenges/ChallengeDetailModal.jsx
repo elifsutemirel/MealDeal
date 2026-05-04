@@ -239,7 +239,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
     Hard: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
   }[challenge.difficulty] || 'bg-slate-100 text-slate-600';
 
-  const isHomeCook = user?.role === 'Home Cook';
+  const isHomeCook = ['Home Cook', 'Verified Chef'].includes(user?.role);
 
   return (
     <div
