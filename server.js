@@ -13,7 +13,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors());
 
 // Simple logging middleware
@@ -1163,6 +1164,24 @@ app.delete('/api/meallist/:id', async (req, res) => {
 app.post('/api/checkout', async (req, res) => {
     const { userId, totalAmount, items } = req.body;
 
+    // Unit conversion helper (mirrors src/utils/unitConversion.js)
+    const UNIT_GROUPS_SERVER = {
+        weight: { units: ['kg','g','mg','lb','oz'], toBase: { kg:1000, g:1, mg:0.001, lb:453.592, oz:28.3495 } },
+        volume: { units: ['L','ml','cup','tbsp','tsp'], toBase: { L:1000, ml:1, cup:236.588, tbsp:14.7868, tsp:4.92892 } },
+        count:  { units: ['pc','pcs','bunch','clove','spear','can','adet'], toBase: { pc:1, pcs:1, bunch:1, clove:1, spear:1, can:1, adet:1 } },
+    };
+    function convertAmount(amount, fromUnit, toUnit) {
+        if (!fromUnit || !toUnit || fromUnit === toUnit) return amount;
+        for (const [groupName, group] of Object.entries(UNIT_GROUPS_SERVER)) {
+            if (group.units.includes(fromUnit) && group.units.includes(toUnit)) {
+                if (groupName === 'count' && fromUnit !== toUnit) return null;
+                const base = amount * group.toBase[fromUnit];
+                return base / group.toBase[toUnit];
+            }
+        }
+        return null; // incompatible units
+    }
+
     // In a real scenario, we would use the session userId. Here we default to 1 for dummy testing.
     const effectiveUserId = userId || 1;
 
@@ -1205,7 +1224,7 @@ app.post('/api/checkout', async (req, res) => {
                     // Eğer kullanıcı spesifik bir envanter (tedarikçi) seçmişse onu kullan
                     if (ing.selectedInventoryId) {
                         invRes = await client.query(
-                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty, si.unit
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                              WHERE si.inventory_id = $1 AND si.available_qty > 0`, 
@@ -1214,7 +1233,7 @@ app.post('/api/checkout', async (req, res) => {
                     } else {
                         // Seçmemişse en ucuzunu bul
                         invRes = await client.query(
-                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty 
+                            `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty, si.unit
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                              WHERE si.ingredient_id = $1 AND si.available_qty > 0 
@@ -1225,10 +1244,23 @@ app.post('/api/checkout', async (req, res) => {
                     
                     if (invRes.rows.length > 0) {
                         const inv = invRes.rows[0];
-                        const qtyToDeduct = Number(ing.baseQty || 1) * servingsFactor;
+                        const recipeQty = Number(ing.baseQty || 1) * servingsFactor;
+                        const recipeUnit = (ing.unit || '').trim();
+                        const supplierUnit = (inv.unit || '').trim();
+
+                        // Convert recipe quantity into supplier's unit before deducting
+                        let qtyToDeduct = recipeQty;
+                        if (recipeUnit && supplierUnit && recipeUnit !== supplierUnit) {
+                            const converted = convertAmount(recipeQty, recipeUnit, supplierUnit);
+                            if (converted !== null) {
+                                qtyToDeduct = converted;
+                            }
+                            // If units are incompatible (e.g. kg vs L), fall back to raw qty
+                        }
+
                         const newQty = Math.max(0, Number(inv.available_qty) - qtyToDeduct);
                         
-                        console.log(`    - Processing: ${ing.name} | Deducting ${qtyToDeduct} from "${inv.location_name}"`);
+                        console.log(`    - Processing: ${ing.name} | ${recipeQty} ${recipeUnit} → ${qtyToDeduct} ${supplierUnit} deducted from "${inv.location_name}" (had ${inv.available_qty} ${supplierUnit})`);
 
                         await client.query(
                             'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
