@@ -102,6 +102,91 @@ async function ensureApplicationUploadColumns() {
     `);
 }
 
+async function ensureChallengeWorkflowSchema() {
+    await pool.query(`
+        ALTER TABLE "KitchenChallenge"
+        ADD COLUMN IF NOT EXISTS creator_id INT REFERENCES "VerifiedChef"(user_id) ON DELETE SET NULL,
+        ADD COLUMN IF NOT EXISTS winner_id INT REFERENCES "User"(user_id) ON DELETE SET NULL;
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS "ChallengeSubmission" (
+            submission_id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+            challenge_id INT NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+            recipe_id INT NOT NULL REFERENCES "Recipe"(recipe_id) ON DELETE CASCADE,
+            photo_url TEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+            submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reviewed_by INT REFERENCES "User"(user_id) ON DELETE SET NULL,
+            review_note TEXT,
+            reviewed_at TIMESTAMP,
+            UNIQUE (user_id, challenge_id, recipe_id)
+        );
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS "ChallengeReward" (
+            reward_id SERIAL PRIMARY KEY,
+            challenge_id INT NOT NULL REFERENCES "KitchenChallenge"(challenge_id) ON DELETE CASCADE,
+            user_id INT NOT NULL REFERENCES "User"(user_id) ON DELETE CASCADE,
+            reward_points INT NOT NULL DEFAULT 0,
+            awarded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (challenge_id, user_id)
+        );
+    `);
+}
+
+async function ensureMockAdminAccount() {
+    const username = process.env.MOCK_ADMIN_USERNAME || 'mockadmin';
+    const email = process.env.MOCK_ADMIN_EMAIL || 'mockadmin@mealdeal.local';
+    const password = process.env.MOCK_ADMIN_PASSWORD || 'mockadmin123';
+    const passwordHash = await bcrypt.hash(password, 10);
+    let client;
+
+    try {
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const existing = await client.query(
+            'SELECT user_id FROM "User" WHERE username = $1 OR email = $2 LIMIT 1',
+            [username, email]
+        );
+
+        let userId;
+        if (existing.rows.length > 0) {
+            userId = existing.rows[0].user_id;
+            await client.query(
+                'UPDATE "User" SET username = $1, email = $2, password_hash = $3 WHERE user_id = $4',
+                [username, email, passwordHash, userId]
+            );
+        } else {
+            const created = await client.query(
+                'INSERT INTO "User" (username, email, password_hash, join_date) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING user_id',
+                [username, email, passwordHash]
+            );
+            userId = created.rows[0].user_id;
+        }
+
+        await client.query(
+            `INSERT INTO "Administrator" (user_id, role_level, note)
+             VALUES ($1, 'System Admin', 'Seeded demo admin account')
+             ON CONFLICT (user_id) DO UPDATE
+             SET role_level = EXCLUDED.role_level,
+                 note = EXCLUDED.note`,
+            [userId]
+        );
+
+        await client.query('COMMIT');
+        console.log(`Mock admin ready: ${email} / ${password}`);
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('MOCK ADMIN SEED ERROR:', error.message);
+    } finally {
+        if (client) client.release();
+    }
+}
+
 function handleAdminError(res, error, label) {
     console.error(label, error);
     res.status(error.statusCode || 500).json({
@@ -1807,11 +1892,8 @@ app.post('/api/checkout', async (req, res) => {
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
-        // 2. Create Cart
-        const cartRes = await client.query('INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id', [effectiveUserId]);
-        const cartId = cartRes.rows[0].cart_id;
-
-        // 3. Process each recipe in the cart and its selected ingredients
+        // 2. Process each recipe/marketplace item as its own cart so recipe
+        // purchases can be counted correctly in creator royalties.
         if (items && items.length > 0) {
             console.log(`\x1b[32m[CHECKOUT START]\x1b[0m User: ${effectiveUserId}`);
             
@@ -1823,6 +1905,16 @@ app.post('/api/checkout', async (req, res) => {
                 const servingsFactor = isIngredientOnly
                     ? Number(cartEntry.servings || 1)
                     : Number(cartEntry.servings || 2) / Number(cartEntry.recipe.base_servings || 2);
+                const recipeId = isIngredientOnly
+                    ? null
+                    : parseInt(cartEntry.recipe.id || cartEntry.recipe.recipe_id) || null;
+                const targetServings = Math.max(1, parseInt(cartEntry.servings || 1) || 1);
+                const itemTotal = Number(cartEntry.recipe.finalPrice ?? cartEntry.totalPrice ?? totalAmount ?? 0);
+                const cartRes = await client.query(
+                    'INSERT INTO "Cart" (user_id, recipe_id, target_servings) VALUES ($1, $2, $3) RETURNING cart_id',
+                    [effectiveUserId, recipeId, targetServings]
+                );
+                const cartId = cartRes.rows[0].cart_id;
 
                 for (const ing of ingredients) {
                     const rawId = ing.id;
@@ -1888,11 +1980,22 @@ app.post('/api/checkout', async (req, res) => {
                         }
                     }
                 }
-            }
-        }
 
-        // 4. Create Order
-        await client.query('INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)', [cartId, totalAmount || 0, 'pending']);
+                await client.query(
+                    'INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)',
+                    [cartId, itemTotal || 0, 'confirmed']
+                );
+            }
+        } else {
+            const cartRes = await client.query(
+                'INSERT INTO "Cart" (user_id, target_servings) VALUES ($1, 1) RETURNING cart_id',
+                [effectiveUserId]
+            );
+            await client.query(
+                'INSERT INTO "Order" (cart_id, total_amount, status) VALUES ($1, $2, $3)',
+                [cartRes.rows[0].cart_id, totalAmount || 0, 'confirmed']
+            );
+        }
 
         await client.query('COMMIT');
         res.json({ message: 'Checkout successful! Order confirmed and inventory deducted.' });
@@ -2645,6 +2748,8 @@ app.listen(PORT, async () => {
         await pool.query('SELECT NOW()');
         console.log('PostgreSQL Connected Successfully');
         await ensureApplicationUploadColumns();
+        await ensureChallengeWorkflowSchema();
+        await ensureMockAdminAccount();
         await seedChallengesIfEmpty();
     } catch (err) {
         console.error('PostgreSQL Connection Error:', err.message);

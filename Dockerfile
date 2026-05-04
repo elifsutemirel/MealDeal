@@ -6,8 +6,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies inside Linux so Rollup's optional native package matches
+# the container platform instead of a Windows-generated lockfile.
+RUN npm install && npm install --no-save @rollup/rollup-linux-x64-musl@4.60.0
 
 # Copy source code
 COPY . .

@@ -22,6 +22,8 @@ import { AdminDashboardPage } from './components/Dashboard/AdminDashboardPage';
 // Credentials are never stored in the frontend.
 
 export default function App() {
+  const isAuthPath = () => typeof window !== 'undefined' && window.location.pathname === '/auth';
+
   const [user, setUser] = useState(() => {
     if (typeof window !== 'undefined') {
       const savedUser = localStorage.getItem('user');
@@ -29,8 +31,8 @@ export default function App() {
     }
     return null;
   });
-  const [guest, setGuest] = useState(() => localStorage.getItem('guest') === 'true');
-  const [currentTab, setCurrentTab] = useState('explore');
+  const [guest, setGuest] = useState(() => !isAuthPath() && localStorage.getItem('guest') === 'true');
+  const [currentTab, setCurrentTab] = useState(() => isAuthPath() ? 'auth' : 'explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
 
   const cartKey = user ? `cart_${user.id}` : null;
@@ -145,6 +147,7 @@ export default function App() {
   const handleLogin = (userData) => {
     setUser(userData);
     setGuest(false);
+    window.history.replaceState({}, '', '/');
     setCurrentTab(routeAfterLogin(userData.role));
   };
 
@@ -153,15 +156,32 @@ export default function App() {
     setUser(null);
     setGuest(false);
     setCart([]);
+    window.history.replaceState({}, '', '/');
     setCurrentTab('explore');
   };
 
+  const openAuth = () => {
+    localStorage.removeItem('guest');
+    window.history.pushState({}, '', '/auth');
+    setGuest(false);
+    setCurrentTab('auth');
+    setSelectedRecipe(null);
+  };
+
+  const continueAsGuest = () => {
+    window.history.replaceState({}, '', '/');
+    setGuest(true);
+    setCurrentTab('explore');
+  };
+
+  const showingAuth = !user && (isAuthPath() || !guest || currentTab === 'auth');
+
   return (
     <div className={`min-h-screen bg-[#F8F9FA] dark:bg-slate-900 selection:bg-emerald-100 dark:selection:bg-emerald-900 font-sans text-slate-900 dark:text-white overflow-x-hidden ${darkMode ? 'dark' : ''}`}>
-      {!user && !guest ? (
+      {showingAuth ? (
         <AuthView
           onLogin={handleLogin}
-          onGuest={() => { setGuest(true); setCurrentTab('explore'); }}
+          onGuest={continueAsGuest}
           darkMode={darkMode}
           setDarkMode={setDarkMode}
         />
@@ -171,6 +191,7 @@ export default function App() {
             user={user}
             activeTab={currentTab}
             setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
+            onSignIn={openAuth}
             cartCount={cart.length}
             onLogout={handleLogout}
             darkMode={darkMode}
@@ -182,7 +203,6 @@ export default function App() {
               <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
             ) : (
               <>
-                {currentTab === 'auth' && <AuthView onLogin={handleLogin} onGuest={() => { setGuest(true); setCurrentTab('explore'); }} darkMode={darkMode} setDarkMode={setDarkMode} />}
                 {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
                 {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
                 {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
