@@ -28,6 +28,7 @@ export default function App() {
     }
     return null;
   }); // Auth State
+  const [guest, setGuest] = useState(() => localStorage.getItem('guest') === 'true');
   const [currentTab, setCurrentTab] = useState('explore');
   const [selectedRecipe, setSelectedRecipe] = useState(null);
 
@@ -63,10 +64,16 @@ export default function App() {
   useEffect(() => {
     if (user) {
       localStorage.setItem('user', JSON.stringify(user));
+      localStorage.removeItem('guest');
     } else {
       localStorage.removeItem('user');
     }
   }, [user]);
+
+  useEffect(() => {
+    if (guest) localStorage.setItem('guest', 'true');
+    else localStorage.removeItem('guest');
+  }, [guest]);
 
   // Fetch Meal Lists when user logs in
   useEffect(() => {
@@ -128,12 +135,22 @@ export default function App() {
 
   return (
     <div className={`min-h-screen bg-[#F8F9FA] dark:bg-slate-900 selection:bg-emerald-100 dark:selection:bg-emerald-900 font-sans text-slate-900 dark:text-white overflow-x-hidden ${darkMode ? 'dark' : ''}`}>
+      {/* Full-screen landing: show when no user and not guest */}
+      {!user && !guest ? (
+        <AuthView
+          onLogin={(userData) => { setUser(userData); setGuest(false); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }}
+          onGuest={() => { setGuest(true); setCurrentTab('explore'); }}
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+        />
+      ) : (
+      <>
       <Navbar
         user={user}
         activeTab={currentTab}
         setTab={(tab) => { setCurrentTab(tab); setSelectedRecipe(null); }}
         cartCount={cart.length}
-        onLogout={() => { if (cartKey) localStorage.removeItem(cartKey); setUser(null); setCart([]); setCurrentTab('explore'); }}
+        onLogout={() => { if (cartKey) localStorage.removeItem(cartKey); setUser(null); setGuest(false); setCart([]); setCurrentTab('explore'); }}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
       />
@@ -143,7 +160,7 @@ export default function App() {
           <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
         ) : (
           <>
-            {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }} />}
+          {currentTab === 'auth' && <AuthView onLogin={(userData) => { setUser(userData); setGuest(false); setCurrentTab(userData.role === 'Local Supplier' ? 'inventory' : 'explore'); }} onGuest={() => { setGuest(true); setCurrentTab('explore'); }} />}
             {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
             {currentTab === 'marketplace' && <SupplierMarketplaceView user={user} onAddToCart={handleAddToCart} />}
             {currentTab === 'cart' && <CartView items={cart} onRemove={removeFromCart} onCheckoutComplete={handleCheckoutComplete} user={user} />}
@@ -168,6 +185,8 @@ export default function App() {
           <span>{user ? `Logged in as: ${user.role}` : 'Browsing as Guest'}</span>
         </div>
       </footer>
+      </>
+      )}
     </div>
   );
 }

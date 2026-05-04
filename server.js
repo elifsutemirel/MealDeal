@@ -1577,6 +1577,35 @@ app.post('/api/challenges/:id/recipes', async (req, res) => {
     }
 });
 
+// DELETE /api/challenges/:id — permanently delete a challenge (creator only)
+app.delete('/api/challenges/:id', async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.body;
+    let client;
+    try {
+        client = await pool.connect();
+        // Verify ownership
+        const check = await client.query('SELECT creator_id FROM "KitchenChallenge" WHERE challenge_id = $1', [id]);
+        if (check.rows.length === 0) return res.status(404).json({ message: 'Challenge not found.' });
+        if (parseInt(check.rows[0].creator_id) !== parseInt(userId)) {
+            return res.status(403).json({ message: 'Only the creator can delete this challenge.' });
+        }
+        await client.query('BEGIN');
+        await client.query('DELETE FROM "ChallengeSubmission" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "HomeCook_Challenge" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "KitchenChallenge_Recipe" WHERE challenge_id = $1', [id]);
+        await client.query('DELETE FROM "KitchenChallenge" WHERE challenge_id = $1', [id]);
+        await client.query('COMMIT');
+        res.json({ message: 'Challenge deleted.' });
+    } catch (error) {
+        if (client) await client.query('ROLLBACK');
+        console.error('DELETE CHALLENGE ERROR:', error);
+        res.status(500).json({ message: 'Error deleting challenge.', detail: error.message });
+    } finally {
+        if (client) client.release();
+    }
+});
+
 // DELETE /api/challenges/:challengeId/recipes/:recipeId — remove recipe from challenge
 app.delete('/api/challenges/:challengeId/recipes/:recipeId', async (req, res) => {
     const { challengeId, recipeId } = req.params;

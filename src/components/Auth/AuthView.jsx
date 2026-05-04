@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Users } from 'lucide-react';
+import { Users, Sun, Moon } from 'lucide-react';
 
-export const AuthView = ({ onLogin }) => {
+export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [role, setRole] = useState('Home Cook');
   const [username, setUsername] = useState('');
@@ -71,139 +71,234 @@ export const AuthView = ({ onLogin }) => {
   };
 
   return (
-    <div className="py-12 flex items-center justify-center">
-      <div className="bg-secondary p-10 rounded-[3rem] shadow-2xl w-full max-w-md border border-primary relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500" />
-        <div className="flex items-center gap-2 mb-8 justify-center">
-          <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white font-black text-xl">M</div>
-          <span className="text-2xl font-black tracking-tight text-primary">mealDeal</span>
+    <div className="min-h-screen bg-slate-950 flex flex-col relative overflow-hidden">
+      {/* ── Animated background ── */}
+      <style>{`
+        @keyframes floatA { 0%,100%{transform:translateY(0) rotate(0deg);opacity:.18} 50%{transform:translateY(-28px) rotate(8deg);opacity:.32} }
+        @keyframes floatB { 0%,100%{transform:translateY(0) rotate(0deg);opacity:.14} 50%{transform:translateY(-20px) rotate(-6deg);opacity:.26} }
+        @keyframes floatC { 0%,100%{transform:translateY(0) rotate(0deg);opacity:.10} 50%{transform:translateY(-36px) rotate(12deg);opacity:.22} }
+        @keyframes blobPulse { 0%,100%{transform:scale(1);opacity:.55} 50%{transform:scale(1.08);opacity:.75} }
+        @keyframes blobPulse2 { 0%,100%{transform:scale(1);opacity:.40} 50%{transform:scale(1.12);opacity:.60} }
+        .blob1{animation:blobPulse 8s ease-in-out infinite;}
+        .blob2{animation:blobPulse2 11s ease-in-out infinite;}
+        .blob3{animation:blobPulse 13s 2s ease-in-out infinite;}
+        .food-icon{user-select:none;pointer-events:none;position:absolute;font-size:1.9rem;filter:drop-shadow(0 0 8px rgba(16,185,129,.25));}
+        .fi-1{animation:floatA 7s 0s ease-in-out infinite;}
+        .fi-2{animation:floatB 9s 1.5s ease-in-out infinite;}
+        .fi-3{animation:floatC 8s 0.8s ease-in-out infinite;}
+        .fi-4{animation:floatA 10s 2.2s ease-in-out infinite;}
+        .fi-5{animation:floatB 7.5s 3s ease-in-out infinite;}
+        .fi-6{animation:floatC 9.5s 0.4s ease-in-out infinite;}
+        .fi-7{animation:floatA 8.5s 1.8s ease-in-out infinite;}
+        .fi-8{animation:floatB 11s 2.8s ease-in-out infinite;}
+        .fi-9{animation:floatC 6.8s 0.2s ease-in-out infinite;}
+        .fi-10{animation:floatA 10.5s 3.5s ease-in-out infinite;}
+      `}</style>
+
+      {/* Glowing blobs */}
+      <div className="blob1 absolute -top-32 -left-32 w-[480px] h-[480px] rounded-full bg-emerald-500 opacity-[0.07] blur-[100px] pointer-events-none" />
+      <div className="blob2 absolute -bottom-40 -right-40 w-[560px] h-[560px] rounded-full bg-teal-400 opacity-[0.07] blur-[120px] pointer-events-none" />
+      <div className="blob3 absolute top-1/2 -translate-y-1/2 right-[10%] w-[320px] h-[320px] rounded-full bg-emerald-600 opacity-[0.05] blur-[90px] pointer-events-none" />
+
+      {/* Dot grid overlay */}
+      <div className="absolute inset-0 pointer-events-none"
+        style={{backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)', backgroundSize:'32px 32px'}} />
+
+      {/* Floating food icons */}
+      <span className="food-icon fi-1"  style={{top:'8%',  left:'5%' }}>🍅</span>
+      <span className="food-icon fi-2"  style={{top:'15%', left:'88%'}}>🥑</span>
+      <span className="food-icon fi-3"  style={{top:'72%', left:'7%' }}>🌿</span>
+      <span className="food-icon fi-4"  style={{top:'82%', left:'90%'}}>🍋</span>
+      <span className="food-icon fi-5"  style={{top:'45%', left:'3%' }}>🫒</span>
+      <span className="food-icon fi-6"  style={{top:'30%', left:'93%'}}>🧅</span>
+      <span className="food-icon fi-7"  style={{top:'60%', left:'92%'}}>🌶️</span>
+      <span className="food-icon fi-8"  style={{top:'55%', left:'4%' }}>🧄</span>
+      <span className="food-icon fi-9"  style={{top:'22%', left:'14%'}}>🫑</span>
+      <span className="food-icon fi-10" style={{top:'88%', left:'50%'}}>🍄</span>
+
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-8 py-5">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center text-white font-black text-lg">M</div>
+          <span className="text-xl font-black tracking-tight text-white">mealDeal</span>
         </div>
-
-        <h2 className="text-2xl font-black text-primary text-center mb-2">
-          {isLogin ? 'Welcome Back' : 'Create an Account'}
-        </h2>
-        <p className="text-sm text-tertiary text-center mb-6 font-medium">
-          {isLogin ? 'Log in to manage your meals and orders.' : 'Join the farm-to-table marketplace.'}
-        </p>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-[10px] font-bold text-red-700 dark:text-red-400">
-            {error}
-          </div>
+        {setDarkMode && (
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          >
+            {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         )}
-        {infoMsg && (
-          <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-            {infoMsg}
-          </div>
-        )}
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <>
-              <div>
-                <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Username</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="yourname"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Select Role</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
-                    <button
-                      type="button"
-                      key={r}
-                      onClick={() => setRole(r)}
-                      className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all ${role === r ? 'bg-emerald-50 dark:bg-emerald-900 border-emerald-500 text-emerald-700 dark:text-emerald-300' : 'bg-tertiary dark:bg-slate-700 border-primary dark:border-slate-600 text-tertiary'}`}
-                    >
-                      {r}
-                    </button>
-                  ))}
+      {/* Main content */}
+      <div className="flex-1 flex items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md">
+          {/* Card */}
+          <div className="bg-slate-900 rounded-[2rem] border border-slate-800 shadow-2xl overflow-hidden">
+            <div className="h-1 bg-emerald-500 w-full" />
+            <div className="p-8">
+              <h2 className="text-2xl font-black text-white text-center mb-1">
+                {isLogin ? 'Welcome Back' : 'Create an Account'}
+              </h2>
+              <p className="text-sm text-slate-400 text-center mb-7 font-medium">
+                {isLogin ? 'Log in to manage your meals and orders.' : 'Join the farm-to-table marketplace.'}
+              </p>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-900/30 border border-red-700/50 rounded-xl text-xs font-bold text-red-400">
+                  {error}
                 </div>
-              </div>
-              {role === 'Local Supplier' && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Address</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="123 Farm Road, Green Valley"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Location Name</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Green Valley Farms"
-                      value={locationName}
-                      onChange={(e) => setLocationName(e.target.value)}
-                      className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-                    />
-                  </div>
-                </>
               )}
-            </>
-          )}
+              {infoMsg && (
+                <div className="mb-4 p-3 bg-emerald-900/30 border border-emerald-700/50 rounded-xl text-xs font-bold text-emerald-400">
+                  {infoMsg}
+                </div>
+              )}
 
-          <div>
-            <label className="text-[10px] font-black uppercase text-tertiary mb-2 block tracking-widest">Email Address</label>
-            <input
-              required
-              type="email"
-              placeholder="user@bilkent.edu.tr"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-            />
-          </div>
-          <div>
-            <div className="flex justify-between mb-2">
-              <label className="text-[10px] font-black uppercase text-tertiary block tracking-widest">Password</label>
-              {isLogin && (
-                <button 
-                  type="button" 
-                  onClick={() => setInfoMsg('A password reset link has been sent to your email (simulated).')}
-                  className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {!isLogin && (
+                  <>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Username</label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="yourname"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Select Role</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {['Home Cook', 'Verified Chef', 'Local Supplier', 'Administrator'].map(r => (
+                          <button
+                            type="button"
+                            key={r}
+                            onClick={() => setRole(r)}
+                            className={`py-2.5 px-2 text-xs font-bold rounded-xl border transition-all ${
+                              role === r
+                                ? 'bg-emerald-500 border-emerald-500 text-white'
+                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'
+                            }`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {role === 'Local Supplier' && (
+                      <>
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Address</label>
+                          <input
+                            required
+                            type="text"
+                            placeholder="123 Farm Road, Green Valley"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Location Name</label>
+                          <input
+                            required
+                            type="text"
+                            placeholder="Green Valley Farms"
+                            value={locationName}
+                            onChange={(e) => setLocationName(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-500 mb-2 block tracking-widest">Email Address</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="user@bilkent.edu.tr"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <label className="text-[10px] font-black uppercase text-slate-500 block tracking-widest">Password</label>
+                    {isLogin && (
+                      <button
+                        type="button"
+                        onClick={() => setInfoMsg('A password reset link has been sent to your email (simulated).')}
+                        className="text-[10px] font-bold text-emerald-500 hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    required
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-600"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-slate-700 hover:bg-slate-600 text-white py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs mt-2 transition-colors disabled:opacity-50"
                 >
-                  Forgot Password?
+                  {loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Register Account'}
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 my-5">
+                <div className="flex-1 h-px bg-slate-800" />
+                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">or</span>
+                <div className="flex-1 h-px bg-slate-800" />
+              </div>
+
+              {/* Continue as Guest */}
+              {onGuest && (
+                <button
+                  onClick={onGuest}
+                  className="w-full py-3 rounded-2xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 font-bold text-sm transition-all"
+                >
+                  Continue as Guest
                 </button>
               )}
+
+              <p className="text-center text-xs font-bold text-slate-500 mt-6">
+                {isLogin ? "Don't have an account? " : 'Already have an account? '}
+                <button
+                  onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setAddress(''); setLocationName(''); }}
+                  className="text-emerald-500 hover:underline"
+                >
+                  {isLogin ? 'Register' : 'Log In'}
+                </button>
+              </p>
             </div>
-            <input
-              required
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-tertiary dark:bg-slate-700 border border-primary dark:border-slate-600 rounded-2xl px-4 py-3 text-sm text-primary dark:text-white outline-none focus:border-emerald-500 transition-colors placeholder:text-tertiary dark:placeholder:text-slate-500"
-            />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-slate-900 dark:bg-slate-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs mt-4 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors shadow-lg shadow-slate-200 dark:shadow-slate-950 disabled:opacity-60"
-          >
-            {loading ? 'Please wait…' : isLogin ? 'Sign In' : 'Register Account'}
-          </button>
-        </form>
-
-        <p className="text-center text-xs font-bold text-tertiary mt-8">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); setInfoMsg(''); setEmail(''); setPassword(''); setUsername(''); setAddress(''); setLocationName(''); }} className="text-emerald-600 dark:text-emerald-400 hover:underline">
-            {isLogin ? 'Register' : 'Log In'}
-          </button>
-        </p>
+          {/* Guest notice */}
+          {onGuest && (
+            <p className="text-center text-[11px] text-slate-600 mt-5 font-medium">
+              Guests can browse recipes, challenges and the leaderboard.<br />
+              <span className="text-slate-500">Sign in to shop, cook and compete.</span>
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

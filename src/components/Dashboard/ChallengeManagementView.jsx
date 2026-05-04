@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Trophy, Plus, X, Users, Image, Check, XCircle, Clock, Calendar, Target, ChefHat, Loader2, MessageSquare, Send, Eye } from 'lucide-react';
+import { Trophy, Plus, X, Users, Image, Check, XCircle, Clock, Calendar, Target, ChefHat, Loader2, MessageSquare, Send, Eye, Trash2, History } from 'lucide-react';
 
 export const ChallengeManagementView = ({ user }) => {
   const [myChallenges, setMyChallenges] = useState([]);
@@ -22,6 +22,8 @@ export const ChallengeManagementView = ({ user }) => {
     start_date: '',
     end_date: '',
   });
+  const [newChallengeRecipes, setNewChallengeRecipes] = useState(new Set());
+  const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
 
   useEffect(() => {
     fetchMyChallenges();
@@ -53,10 +55,33 @@ export const ChallengeManagementView = ({ user }) => {
     }
   };
 
+  const handleDeleteChallenge = async (challengeId) => {
+    if (!confirm('Permanently delete this challenge? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/challenges/${challengeId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      if (res.ok) {
+        fetchMyChallenges();
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Failed to delete challenge.');
+      }
+    } catch (err) {
+      console.error('Delete challenge error:', err);
+      alert('Failed to delete challenge.');
+    }
+  };
+
   const handleCreateChallenge = async (e) => {
     e.preventDefault();
     if (!newChallenge.title || !newChallenge.start_date || !newChallenge.end_date) {
       return alert('Please fill in all required fields');
+    }
+    if (newChallengeRecipes.size === 0) {
+      return alert('Please select at least one recipe for the challenge.');
     }
 
     try {
@@ -73,7 +98,21 @@ export const ChallengeManagementView = ({ user }) => {
       });
 
       if (res.ok) {
+        const created = await res.json();
+        const challengeId = created.challenge?.challenge_id || created.challenge_id || created.id;
+        // Add all selected recipes
+        await Promise.all(
+          [...newChallengeRecipes].map(recipeId =>
+            fetch(`/api/challenges/${challengeId}/recipes`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id, recipeId }),
+            })
+          )
+        );
         setNewChallenge({ title: '', description: '', start_date: '', end_date: '' });
+        setNewChallengeRecipes(new Set());
+        setRecipeSearchQuery('');
         fetchMyChallenges();
         alert('Challenge created successfully!');
       } else {
@@ -191,6 +230,336 @@ export const ChallengeManagementView = ({ user }) => {
     return 'Active';
   };
 
+  const renderChallengeCard = (challenge) => (
+    <div
+      key={challenge.challenge_id}
+      className="bg-white dark:bg-slate-800 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm"
+    >
+      <div className="p-6">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2">
+              <h3 className="text-xl font-black text-primary">{challenge.title}</h3>
+              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                getChallengeStatus(challenge) === 'Active' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
+                getChallengeStatus(challenge) === 'Upcoming' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                getChallengeStatus(challenge) === 'Completed' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
+                'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
+                {getChallengeStatus(challenge)}
+              </span>
+            </div>
+            <p className="text-sm text-secondary mb-3">{challenge.description || 'No description'}</p>
+            <div className="flex items-center gap-4 text-xs text-tertiary flex-wrap">
+              <span className="flex items-center gap-1">
+                <Calendar size={14} />
+                {new Date(challenge.start_date).toLocaleDateString()}
+              </span>
+              <span>→</span>
+              <span className="flex items-center gap-1">
+                <Target size={14} />
+                {new Date(challenge.end_date).toLocaleDateString()}
+              </span>
+              <span className="flex items-center gap-1">
+                <Users size={14} />
+                {challenge.participants || 0} participants
+              </span>
+              <span className="flex items-center gap-1">
+                <ChefHat size={14} />
+                {challenge.recipe_count || 0} recipes
+              </span>
+            </div>
+            {/* Winner display for Completed challenges */}
+            {getChallengeStatus(challenge) === 'Completed' && (
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-xl w-fit">
+                <span className="text-lg">🏆</span>
+                <div>
+                  <p className="text-[10px] font-black text-yellow-600 dark:text-yellow-400 uppercase tracking-wider">Winner</p>
+                  <p className="text-sm font-black text-yellow-800 dark:text-yellow-300">
+                    {challenge.winner_name || 'Unknown'}
+                  </p>
+                </div>
+              </div>
+            )}
+            {getChallengeStatus(challenge) === 'Ended' && (
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl w-fit">
+                <span className="text-base">🏁</span>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">No winner — challenge ended without completion</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          {['Active', 'Upcoming'].includes(getChallengeStatus(challenge)) && (
+            <button
+              onClick={() => {
+                setSelectedChallengeForRecipes(selectedChallengeForRecipes === challenge.challenge_id ? null : challenge.challenge_id);
+                setSelectedChallengeForSubmissions(null);
+                setSelectedChallengeForParticipants(null);
+              }}
+              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
+            >
+              <Plus size={16} className="inline mr-2" />
+              Add Recipes
+            </button>
+          )}
+          <button
+            onClick={() => {
+              const newId = selectedChallengeForParticipants === challenge.challenge_id ? null : challenge.challenge_id;
+              setSelectedChallengeForParticipants(newId);
+              setSelectedChallengeForRecipes(null);
+              setSelectedChallengeForSubmissions(null);
+              if (newId) fetchParticipants(newId);
+            }}
+            className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
+          >
+            <Users size={16} className="inline mr-2" />
+            View Participants
+          </button>
+          <button
+            onClick={() => {
+              const newId = selectedChallengeForSubmissions === challenge.challenge_id ? null : challenge.challenge_id;
+              setSelectedChallengeForSubmissions(newId);
+              setSelectedChallengeForRecipes(null);
+              setSelectedChallengeForParticipants(null);
+              if (newId) fetchSubmissions(newId);
+            }}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
+          >
+            <Image size={16} className="inline mr-2" />
+            Review Submissions
+          </button>
+          {['Active', 'Upcoming'].includes(getChallengeStatus(challenge)) && (
+            <button
+              onClick={() => handleDeleteChallenge(challenge.challenge_id)}
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-xl transition-all flex items-center gap-2"
+              title="Delete challenge permanently"
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          )}
+        </div>
+
+        {/* Recipe Management Section */}
+        {selectedChallengeForRecipes === challenge.challenge_id && (
+          <div className="p-6 border-t border-slate-100 dark:border-slate-700">
+            <h4 className="font-black text-lg mb-4">Add Recipes to Challenge</h4>
+            <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+              {allRecipes.map((recipe) => {
+                const isAdded = challenge.recipe_ids?.includes(recipe.id);
+                return (
+                  <div
+                    key={recipe.id}
+                    className={`p-4 rounded-xl border ${
+                      isAdded
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <h5 className="font-black text-sm">{recipe.title}</h5>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {recipe.cuisine} • {recipe.difficulty}
+                        </p>
+                      </div>
+                      {isAdded ? (
+                        <button
+                          onClick={() => handleRemoveRecipe(challenge.challenge_id, recipe.id)}
+                          className="text-red-500 hover:text-red-600"
+                        >
+                          <X size={18} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleAddRecipe(challenge.challenge_id, recipe.id)}
+                          className="text-emerald-500 hover:text-emerald-600"
+                        >
+                          <Plus size={18} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Participants Section */}
+        {selectedChallengeForParticipants === challenge.challenge_id && (
+          <div className="p-6 border-t border-slate-100 dark:border-slate-700">
+            <h4 className="font-black text-lg mb-4">Participants</h4>
+            {participantsLoading ? (
+              <div className="flex items-center gap-2 text-slate-400">
+                <Loader2 size={14} className="animate-spin" />
+                Loading...
+              </div>
+            ) : participants.length === 0 ? (
+              <p className="text-slate-400 text-sm">No participants yet</p>
+            ) : (
+              <div className="space-y-2">
+                {participants.map((p) => (
+                  <div
+                    key={p.user_id}
+                    className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-xl"
+                  >
+                    <span className="font-bold text-sm">{p.username}</span>
+                    <span className="text-xs text-slate-500">
+                      Joined: {new Date(p.joined_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Submissions Review Section */}
+        {selectedChallengeForSubmissions === challenge.challenge_id && (
+          <div className="mt-4 border-t border-slate-100 dark:border-slate-700 pt-4">
+            <h4 className="font-black text-lg mb-4 flex items-center gap-2">
+              <Eye size={18} className="text-emerald-500" /> Review Submissions
+            </h4>
+            {submissionsLoading ? (
+              <div className="flex items-center gap-2 text-slate-400">
+                <Loader2 size={14} className="animate-spin" /> Loading...
+              </div>
+            ) : submissions.length === 0 ? (
+              <p className="text-slate-400 text-sm">No submissions yet</p>
+            ) : (
+              <div className="space-y-4">
+                {submissions.map((sub) => {
+                  const isReviewing = activeReview[sub.submission_id];
+                  const note = reviewNotes[sub.submission_id] || '';
+                  const isDataUrl = sub.photo_url?.startsWith('data:');
+                  return (
+                    <div
+                      key={sub.submission_id}
+                      className={`rounded-2xl border overflow-hidden ${
+                        sub.status === 'approved'
+                          ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/10'
+                          : sub.status === 'rejected'
+                          ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                      }`}
+                    >
+                      {sub.photo_url && (
+                        <div className="relative w-full bg-slate-100 dark:bg-slate-900" style={{ maxHeight: '220px', overflow: 'hidden' }}>
+                          <img
+                            src={sub.photo_url}
+                            alt="Submission photo"
+                            className="w-full object-cover"
+                            style={{ maxHeight: '220px' }}
+                            onError={(e) => { e.target.parentElement.style.display = 'none'; }}
+                          />
+                          {!isDataUrl && (
+                            <a
+                              href={sub.photo_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="absolute top-2 right-2 bg-black/60 text-white text-[9px] font-bold px-2 py-1 rounded-lg hover:bg-black/80 transition"
+                            >
+                              Open ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      <div className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-black text-sm text-slate-800 dark:text-white">{sub.recipe_title}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">by <span className="font-bold">{sub.username}</span></p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">{new Date(sub.submitted_at).toLocaleString()}</p>
+                          </div>
+                          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
+                            sub.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400' :
+                            sub.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400' :
+                            'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'
+                          }`}>
+                            {sub.status}
+                          </span>
+                        </div>
+                        {sub.review_note && (
+                          <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 mb-3">
+                            <MessageSquare size={12} className="text-slate-400 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-slate-600 dark:text-slate-300">
+                              <span className="font-black">Your note:</span> {sub.review_note}
+                            </p>
+                          </div>
+                        )}
+                        {sub.status === 'pending' && (
+                          <div>
+                            {!isReviewing ? (
+                              <div className="flex gap-2 mt-1">
+                                <button
+                                  onClick={() => setActiveReview(prev => ({ ...prev, [sub.submission_id]: 'approve' }))}
+                                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5"
+                                >
+                                  <Check size={14} /> Approve
+                                </button>
+                                <button
+                                  onClick={() => setActiveReview(prev => ({ ...prev, [sub.submission_id]: 'reject' }))}
+                                  className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5"
+                                >
+                                  <XCircle size={14} /> Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="mt-2 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3">
+                                <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                                  {isReviewing === 'approve' ? '✅ Approving submission' : '❌ Rejecting submission'}
+                                </p>
+                                <div className="flex items-start gap-2 mb-2">
+                                  <MessageSquare size={14} className="text-slate-400 flex-shrink-0 mt-2.5" />
+                                  <textarea
+                                    value={note}
+                                    onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.submission_id]: e.target.value }))}
+                                    placeholder={isReviewing === 'approve' ? 'Add a compliment or tip... (optional)' : 'Tell the cook why it was rejected... (required for rejection)'}
+                                    rows={2}
+                                    className="flex-1 text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setActiveReview(prev => { const n = {...prev}; delete n[sub.submission_id]; return n; })}
+                                    className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl transition-all"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (isReviewing === 'reject' && !note.trim()) {
+                                        return alert('Please provide a reason for rejection.');
+                                      }
+                                      handleReviewSubmission(sub.submission_id, isReviewing === 'approve' ? 'approved' : 'rejected', note);
+                                    }}
+                                    className={`flex-1 text-xs font-black py-2 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-white ${
+                                      isReviewing === 'approve' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600'
+                                    }`}
+                                  >
+                                    <Send size={12} />
+                                    {isReviewing === 'approve' ? 'Confirm Approve' : 'Confirm Reject'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="py-32 flex flex-col items-center gap-4 text-slate-400">
@@ -267,12 +636,78 @@ export const ChallengeManagementView = ({ user }) => {
               />
             </div>
           </div>
+          {/* Recipe Selection */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+              Recipes *
+              <span className="ml-2 text-xs font-normal text-slate-500">(select at least one)</span>
+              {newChallengeRecipes.size > 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-black rounded-full">
+                  {newChallengeRecipes.size} selected
+                </span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={recipeSearchQuery}
+              onChange={(e) => setRecipeSearchQuery(e.target.value)}
+              placeholder="Search recipes..."
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm mb-3"
+            />
+            <div className={`grid grid-cols-2 gap-2 max-h-64 overflow-y-auto rounded-xl border p-3 ${
+              newChallengeRecipes.size === 0
+                ? 'border-slate-200 dark:border-slate-600'
+                : 'border-emerald-300 dark:border-emerald-700'
+            } bg-slate-50 dark:bg-slate-900/30`}>
+              {allRecipes
+                .filter(r => r.title.toLowerCase().includes(recipeSearchQuery.toLowerCase()))
+                .map((recipe) => {
+                  const selected = newChallengeRecipes.has(recipe.id);
+                  return (
+                    <button
+                      key={recipe.id}
+                      type="button"
+                      onClick={() => {
+                        setNewChallengeRecipes(prev => {
+                          const next = new Set(prev);
+                          selected ? next.delete(recipe.id) : next.add(recipe.id);
+                          return next;
+                        });
+                      }}
+                      className={`flex items-center gap-2 p-3 rounded-xl border text-left transition-all ${
+                        selected
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-700'
+                      }`}
+                    >
+                      <div className={`flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                        selected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300 dark:border-slate-500'
+                      }`}>
+                        {selected && <Check size={12} className="text-white" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-xs text-primary truncate">{recipe.title}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{recipe.cuisine} • {recipe.difficulty}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              {allRecipes.filter(r => r.title.toLowerCase().includes(recipeSearchQuery.toLowerCase())).length === 0 && (
+                <p className="col-span-2 text-center text-slate-400 text-sm py-4">No recipes found</p>
+              )}
+            </div>
+          </div>
+
           <button
             type="submit"
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
+            disabled={newChallengeRecipes.size === 0}
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-black py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
           >
             <Trophy size={20} />
             Create Challenge
+            {newChallengeRecipes.size > 0 && (
+              <span className="text-emerald-100 text-sm font-normal">with {newChallengeRecipes.size} recipe{newChallengeRecipes.size > 1 ? 's' : ''}</span>
+            )}
           </button>
         </form>
       </div>
@@ -286,321 +721,37 @@ export const ChallengeManagementView = ({ user }) => {
             <Trophy size={48} className="mx-auto text-slate-300 dark:text-slate-600 mb-4" />
             <p className="text-slate-400 dark:text-slate-500 font-bold">No challenges created yet</p>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {myChallenges.map((challenge) => (
-              <div
-                key={challenge.challenge_id}
-                className="bg-white dark:bg-slate-800 rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-700 shadow-sm"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-black text-primary">{challenge.title}</h3>
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                          getChallengeStatus(challenge) === 'Active' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
-                          getChallengeStatus(challenge) === 'Upcoming' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                          getChallengeStatus(challenge) === 'Completed' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                          'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                        }`}>
-                          {getChallengeStatus(challenge)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-secondary mb-3">{challenge.description || 'No description'}</p>
-                      <div className="flex items-center gap-4 text-xs text-tertiary">
-                        <span className="flex items-center gap-1">
-                          <Calendar size={14} />
-                          {new Date(challenge.start_date).toLocaleDateString()}
-                        </span>
-                        <span>→</span>
-                        <span className="flex items-center gap-1">
-                          <Target size={14} />
-                          {new Date(challenge.end_date).toLocaleDateString()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users size={14} />
-                          {challenge.participants || 0} participants
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <ChefHat size={14} />
-                          {challenge.recipe_count || 0} recipes
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedChallengeForRecipes(
-                          selectedChallengeForRecipes === challenge.challenge_id ? null : challenge.challenge_id
-                        );
-                        setSelectedChallengeForSubmissions(null);
-                        setSelectedChallengeForParticipants(null);
-                      }}
-                      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
-                    >
-                      <Plus size={16} className="inline mr-2" />
-                      Add Recipes
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newId = selectedChallengeForParticipants === challenge.challenge_id ? null : challenge.challenge_id;
-                        setSelectedChallengeForParticipants(newId);
-                        setSelectedChallengeForRecipes(null);
-                        setSelectedChallengeForSubmissions(null);
-                        if (newId) fetchParticipants(newId);
-                      }}
-                      className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
-                    >
-                      <Users size={16} className="inline mr-2" />
-                      View Participants
-                    </button>
-                    <button
-                      onClick={() => {
-                        const newId = selectedChallengeForSubmissions === challenge.challenge_id ? null : challenge.challenge_id;
-                        setSelectedChallengeForSubmissions(newId);
-                        setSelectedChallengeForRecipes(null);
-                        setSelectedChallengeForParticipants(null);
-                        if (newId) fetchSubmissions(newId);
-                      }}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-xl transition-all"
-                    >
-                      <Image size={16} className="inline mr-2" />
-                      Review Submissions
-                    </button>
-                  </div>
-
-                  {/* Recipe Management Section */}
-                  {selectedChallengeForRecipes === challenge.challenge_id && (
-                    <div className="p-6 border-t border-slate-100 dark:border-slate-700">
-                      <h4 className="font-black text-lg mb-4">Add Recipes to Challenge</h4>
-                      <div className="grid grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                        {allRecipes.map((recipe) => {
-                          const isAdded = challenge.recipe_ids?.includes(recipe.id);
-                          return (
-                            <div
-                              key={recipe.id}
-                              className={`p-4 rounded-xl border ${
-                                isAdded
-                                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700'
-                                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600'
-                              }`}
-                            >
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <h5 className="font-black text-sm">{recipe.title}</h5>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    {recipe.cuisine} • {recipe.difficulty}
-                                  </p>
-                                </div>
-                                {isAdded ? (
-                                  <button
-                                    onClick={() => handleRemoveRecipe(challenge.challenge_id, recipe.id)}
-                                    className="text-red-500 hover:text-red-600"
-                                  >
-                                    <X size={18} />
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleAddRecipe(challenge.challenge_id, recipe.id)}
-                                    className="text-emerald-500 hover:text-emerald-600"
-                                  >
-                                    <Plus size={18} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Participants Section */}
-                  {selectedChallengeForParticipants === challenge.challenge_id && (
-                    <div className="p-6 border-t border-slate-100 dark:border-slate-700">
-                      <h4 className="font-black text-lg mb-4">Participants</h4>
-                      {participantsLoading ? (
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Loader2 size={14} className="animate-spin" />
-                          Loading...
-                        </div>
-                      ) : participants.length === 0 ? (
-                        <p className="text-slate-400 text-sm">No participants yet</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {participants.map((p) => (
-                            <div
-                              key={p.user_id}
-                              className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-xl"
-                            >
-                              <span className="font-bold text-sm">{p.username}</span>
-                              <span className="text-xs text-slate-500">
-                                Joined: {new Date(p.joined_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                    {/* Submissions Review Section */}
-                  {selectedChallengeForSubmissions === challenge.challenge_id && (
-                    <div className="mt-4 border-t border-slate-100 dark:border-slate-700 pt-4">
-                      <h4 className="font-black text-lg mb-4 flex items-center gap-2">
-                        <Eye size={18} className="text-emerald-500" /> Review Submissions
-                      </h4>
-                      {submissionsLoading ? (
-                        <div className="flex items-center gap-2 text-slate-400">
-                          <Loader2 size={14} className="animate-spin" /> Loading...
-                        </div>
-                      ) : submissions.length === 0 ? (
-                        <p className="text-slate-400 text-sm">No submissions yet</p>
-                      ) : (
-                        <div className="space-y-4">
-                          {submissions.map((sub) => {
-                            const isReviewing = activeReview[sub.submission_id];
-                            const note = reviewNotes[sub.submission_id] || '';
-                            const isDataUrl = sub.photo_url?.startsWith('data:');
-
-                            return (
-                              <div
-                                key={sub.submission_id}
-                                className={`rounded-2xl border overflow-hidden ${
-                                  sub.status === 'approved'
-                                    ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/10'
-                                    : sub.status === 'rejected'
-                                    ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10'
-                                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
-                                }`}
-                              >
-                                {/* Photo preview */}
-                                {sub.photo_url && (
-                                  <div className="relative w-full bg-slate-100 dark:bg-slate-900" style={{ maxHeight: '220px', overflow: 'hidden' }}>
-                                    <img
-                                      src={sub.photo_url}
-                                      alt="Submission photo"
-                                      className="w-full object-cover"
-                                      style={{ maxHeight: '220px' }}
-                                      onError={(e) => { e.target.parentElement.style.display = 'none'; }}
-                                    />
-                                    {!isDataUrl && (
-                                      <a
-                                        href={sub.photo_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="absolute top-2 right-2 bg-black/60 text-white text-[9px] font-bold px-2 py-1 rounded-lg hover:bg-black/80 transition"
-                                      >
-                                        Open ↗
-                                      </a>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Info row */}
-                                <div className="p-4">
-                                  <div className="flex items-start justify-between mb-2">
-                                    <div>
-                                      <p className="font-black text-sm text-slate-800 dark:text-white">{sub.recipe_title}</p>
-                                      <p className="text-xs text-slate-500 dark:text-slate-400">by <span className="font-bold">{sub.username}</span></p>
-                                      <p className="text-[10px] text-slate-400 mt-0.5">{new Date(sub.submitted_at).toLocaleString()}</p>
-                                    </div>
-                                    <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase ${
-                                      sub.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400' :
-                                      sub.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400' :
-                                      'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'
-                                    }`}>
-                                      {sub.status}
-                                    </span>
-                                  </div>
-
-                                  {/* Previous review note */}
-                                  {sub.review_note && (
-                                    <div className="flex items-start gap-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 mb-3">
-                                      <MessageSquare size={12} className="text-slate-400 flex-shrink-0 mt-0.5" />
-                                      <p className="text-xs text-slate-600 dark:text-slate-300">
-                                        <span className="font-black">Your note:</span> {sub.review_note}
-                                      </p>
-                                    </div>
-                                  )}
-
-                                  {/* Action buttons — only for pending */}
-                                  {sub.status === 'pending' && (
-                                    <div>
-                                      {!isReviewing ? (
-                                        <div className="flex gap-2 mt-1">
-                                          <button
-                                            onClick={() => setActiveReview(prev => ({ ...prev, [sub.submission_id]: 'approve' }))}
-                                            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5"
-                                          >
-                                            <Check size={14} /> Approve
-                                          </button>
-                                          <button
-                                            onClick={() => setActiveReview(prev => ({ ...prev, [sub.submission_id]: 'reject' }))}
-                                            className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5"
-                                          >
-                                            <XCircle size={14} /> Reject
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <div className="mt-2 bg-slate-50 dark:bg-slate-700/50 rounded-2xl p-3">
-                                          <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                                            {isReviewing === 'approve' ? '✅ Approving submission' : '❌ Rejecting submission'}
-                                          </p>
-                                          <div className="flex items-start gap-2 mb-2">
-                                            <MessageSquare size={14} className="text-slate-400 flex-shrink-0 mt-2.5" />
-                                            <textarea
-                                              value={note}
-                                              onChange={(e) => setReviewNotes(prev => ({ ...prev, [sub.submission_id]: e.target.value }))}
-                                              placeholder={isReviewing === 'approve' ? 'Add a compliment or tip... (optional)' : 'Tell the cook why it was rejected... (required for rejection)'}
-                                              rows={2}
-                                              className="flex-1 text-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none resize-none"
-                                            />
-                                          </div>
-                                          <div className="flex gap-2">
-                                            <button
-                                              onClick={() => setActiveReview(prev => { const n = {...prev}; delete n[sub.submission_id]; return n; })}
-                                              className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl transition-all"
-                                            >
-                                              Cancel
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                if (isReviewing === 'reject' && !note.trim()) {
-                                                  return alert('Please provide a reason for rejection.');
-                                                }
-                                                handleReviewSubmission(sub.submission_id, isReviewing === 'approve' ? 'approved' : 'rejected', note);
-                                              }}
-                                              className={`flex-1 text-xs font-black py-2 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-white ${
-                                                isReviewing === 'approve'
-                                                  ? 'bg-emerald-500 hover:bg-emerald-600'
-                                                  : 'bg-red-500 hover:bg-red-600'
-                                              }`}
-                                            >
-                                              <Send size={12} />
-                                              {isReviewing === 'approve' ? 'Confirm Approve' : 'Confirm Reject'}
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+        ) : (() => {
+          const activeChallenges = myChallenges.filter(c => ['Active', 'Upcoming'].includes(getChallengeStatus(c)));
+          const historyChallenges = myChallenges.filter(c => ['Completed', 'Ended'].includes(getChallengeStatus(c)));
+          return (
+            <>
+              {/* Active & Upcoming challenges */}
+              {activeChallenges.length > 0 && (
+                <div className="space-y-6 mb-10">
+                  {activeChallenges.map((challenge) => renderChallengeCard(challenge))}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+              {activeChallenges.length === 0 && historyChallenges.length > 0 && (
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-8 text-center border border-dashed border-slate-200 dark:border-slate-700 mb-8">
+                  <p className="text-slate-400 font-bold text-sm">No active or upcoming challenges.</p>
+                </div>
+              )}
+              {/* Challenge History */}
+              {historyChallenges.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <History size={20} className="text-slate-400" />
+                    <h2 className="text-xl font-black text-primary">Challenge History ({historyChallenges.length})</h2>
+                  </div>
+                  <div className="space-y-6 opacity-80">
+                    {historyChallenges.map((challenge) => renderChallengeCard(challenge))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );

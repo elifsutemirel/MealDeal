@@ -42,7 +42,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
   }, [challenge.challenge_id, user]);
 
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -205,6 +205,13 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
   const timeRemaining = endDate - currentTime;
   const daysRemaining = Math.max(0, Math.floor(timeRemaining / (1000 * 60 * 60 * 24)));
   const hoursRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+  const minutesRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)));
+  const secondsRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60)) / 1000));
+  const timeLabel = daysRemaining > 0
+    ? `${daysRemaining}d ${hoursRemaining}h ${minutesRemaining}m`
+    : hoursRemaining > 0
+    ? `${hoursRemaining}h ${minutesRemaining}m ${secondsRemaining}s`
+    : `${minutesRemaining}m ${secondsRemaining}s`;
 
   const progressPercent = progress.total > 0
     ? Math.round((parseInt(progress.cooked_count) / parseInt(progress.total)) * 100)
@@ -317,7 +324,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
                 <div className="bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-2xl">
                   <p className="text-[9px] font-black uppercase text-red-400 mb-0.5">Time Left</p>
                   <p className="text-xs font-black text-red-700 dark:text-red-400">
-                    ⏱ {daysRemaining}d {hoursRemaining}h
+                    ⏱ {timeLabel}
                   </p>
                 </div>
               )}

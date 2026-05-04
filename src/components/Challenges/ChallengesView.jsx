@@ -70,8 +70,7 @@ export const ChallengesView = ({ user }) => {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-      console.log('Updated current time:', new Date());
-    }, 5000); // Update every 5 seconds for responsive status changes
+    }, 1000); // Update every second for real-time countdown
 
     return () => clearInterval(interval);
   }, []);
@@ -146,9 +145,12 @@ export const ChallengesView = ({ user }) => {
 
   const filteredChallenges = challenges.filter(c => {
     const status = getChallengeStatus(c);
-    const matchesFilter = filter === 'all' ? true : filter === status;
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = c.title.toLowerCase().includes(searchLower) || (c.description || '').toLowerCase().includes(searchLower);
+    if (filter === 'joined') {
+      return joinedIds.has(c.challenge_id) && matchesSearch;
+    }
+    const matchesFilter = filter === 'all' ? true : filter === status;
     return matchesFilter && matchesSearch;
   });
 
@@ -187,18 +189,26 @@ export const ChallengesView = ({ user }) => {
               )}
             </div>
 
-            <div className="flex gap-3">
-              {['all', 'active', 'upcoming', 'completed'].map(f => (
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'active', label: 'Active' },
+                { key: 'upcoming', label: 'Upcoming' },
+                { key: 'completed', label: 'Completed' },
+                ...(user?.role === 'Home Cook' ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
+              ].map(({ key: f, label }) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase transition-all ${
                     filter === f
-                      ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                      ? f === 'joined'
+                        ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30'
+                        : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
                   }`}
                 >
-                  {f}
+                  {label}
                 </button>
               ))}
             </div>
@@ -227,8 +237,15 @@ export const ChallengesView = ({ user }) => {
               const endDate = new Date(challenge.end_date);
               const now = currentTime;
               const timeRemaining = endDate - now;
-              const daysRemaining = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
-              const hoursRemaining = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+              const daysRemaining = Math.max(0, Math.floor(timeRemaining / (1000 * 60 * 60 * 24)));
+              const hoursRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+              const minutesRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60)));
+              const secondsRemaining = Math.max(0, Math.floor((timeRemaining % (1000 * 60)) / 1000));
+              const timeLabel = daysRemaining > 0
+                ? `${daysRemaining}d ${hoursRemaining}h ${minutesRemaining}m`
+                : hoursRemaining > 0
+                ? `${hoursRemaining}h ${minutesRemaining}m ${secondsRemaining}s`
+                : `${minutesRemaining}m ${secondsRemaining}s`;
 
               return (
                 <div
@@ -270,7 +287,7 @@ export const ChallengesView = ({ user }) => {
                           Time Left
                         </p>
                         <p className="text-primary">
-                          {status === 'completed' || status === 'ended' ? 'Ended' : daysRemaining > 0 ? `${daysRemaining}d ${hoursRemaining}h` : `${hoursRemaining}h`}
+                          {status === 'completed' || status === 'ended' ? 'Ended' : timeLabel}
                         </p>
                       </div>
                       <div className="bg-tertiary dark:bg-slate-800 p-2 rounded-xl">
