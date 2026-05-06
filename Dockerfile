@@ -11,8 +11,10 @@ RUN npm ci
 
 # Rollup optional native package can be skipped by npm on Alpine; install the
 # correct one for the current target architecture explicitly.
+# Map Docker's TARGETARCH (amd64/arm64) to rollup's naming (x64/arm64).
 ARG TARGETARCH
-RUN npm install --no-save @rollup/rollup-linux-${TARGETARCH}-musl@4.60.0
+RUN ROLLUP_ARCH=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+    npm install --no-save @rollup/rollup-linux-${ROLLUP_ARCH}-musl@4.60.0
 
 # Copy source code
 COPY . .
