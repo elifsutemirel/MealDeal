@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Trophy, Plus, X, Users, Image, Check, XCircle, Clock, Calendar, Target, ChefHat, Loader2, MessageSquare, Send, Eye, Trash2, History } from 'lucide-react';
+import { Trophy, Plus, X, Users, Image, Check, XCircle, Clock, Calendar, Target, ChefHat, Loader2, MessageSquare, Send, Eye, Trash2, History, Search, UtensilsCrossed } from 'lucide-react';
 
 export const ChallengeManagementView = ({ user }) => {
   const [myChallenges, setMyChallenges] = useState([]);
@@ -25,9 +25,18 @@ export const ChallengeManagementView = ({ user }) => {
   const [newChallengeRecipes, setNewChallengeRecipes] = useState(new Set());
   const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
 
+  // Inline recipe creation modal
+  const [showNewRecipeModal, setShowNewRecipeModal] = useState(false);
+  const [allIngredients, setAllIngredients] = useState([]);
+  const [newRecipe, setNewRecipe] = useState({ title: '', difficulty: 'Easy', cook_time_min: 30, servings: 2, dietary: '', preparation_steps: '' });
+  const [newRecipeIngredients, setNewRecipeIngredients] = useState([{ ingredient_id: '', qty: '', unit: '' }]);
+  const [recipeCreating, setRecipeCreating] = useState(false);
+  const [ingredientSearch, setIngredientSearch] = useState('');
+
   useEffect(() => {
     fetchMyChallenges();
     fetchAllRecipes();
+    fetch('/api/ingredients').then(r => r.json()).then(data => setAllIngredients(Array.isArray(data) ? data : [])).catch(() => {});
   }, []);
 
   const fetchMyChallenges = async () => {
@@ -52,6 +61,47 @@ export const ChallengeManagementView = ({ user }) => {
     } catch (err) {
       console.error('Failed to fetch recipes:', err);
       setAllRecipes([]);
+    }
+  };
+
+  const handleCreateNewRecipe = async (e) => {
+    e.preventDefault();
+    if (!newRecipe.title.trim()) return alert('Recipe title is required.');
+    setRecipeCreating(true);
+    try {
+      const body = {
+        creator_id: user.id,
+        title: newRecipe.title,
+        preparation_steps: newRecipe.preparation_steps || null,
+        cook_time_min: Number(newRecipe.cook_time_min),
+        difficulty_level: newRecipe.difficulty,
+        dietary_tag: newRecipe.dietary || null,
+        base_servings: Number(newRecipe.servings),
+        visibility: 'public',
+        ingredients: newRecipeIngredients
+          .filter(i => i.ingredient_id && i.qty && i.unit)
+          .map(i => ({
+            ingredient_id: Number(i.ingredient_id),
+            name: allIngredients.find(a => String(a.ingredient_id) === String(i.ingredient_id))?.name,
+            qty: Number(i.qty),
+            unit: i.unit,
+          })),
+      };
+      const res = await fetch('/api/recipes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Failed'); }
+      const data = await res.json();
+      const newId = data.recipe_id;
+      // Refresh recipe list and auto-select the new recipe
+      await fetchAllRecipes();
+      setNewChallengeRecipes(prev => new Set([...prev, newId]));
+      setShowNewRecipeModal(false);
+      setNewRecipe({ title: '', difficulty: 'Easy', cook_time_min: 30, servings: 2, dietary: '', preparation_steps: '' });
+      setNewRecipeIngredients([{ ingredient_id: '', qty: '', unit: '' }]);
+      setIngredientSearch('');
+    } catch (err) {
+      alert(err.message || 'Failed to create recipe.');
+    } finally {
+      setRecipeCreating(false);
     }
   };
 
@@ -638,15 +688,24 @@ export const ChallengeManagementView = ({ user }) => {
           </div>
           {/* Recipe Selection */}
           <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Recipes *
-              <span className="ml-2 text-xs font-normal text-slate-500">(select at least one)</span>
-              {newChallengeRecipes.size > 0 && (
-                <span className="ml-2 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-black rounded-full">
-                  {newChallengeRecipes.size} selected
-                </span>
-              )}
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                Recipes *
+                <span className="text-xs font-normal text-slate-500">(select at least one)</span>
+                {newChallengeRecipes.size > 0 && (
+                  <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 text-xs font-black rounded-full">
+                    {newChallengeRecipes.size} selected
+                  </span>
+                )}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowNewRecipeModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black rounded-xl transition-all"
+              >
+                <Plus size={13} /> Create New Recipe
+              </button>
+            </div>
             <input
               type="text"
               value={recipeSearchQuery}
@@ -711,6 +770,190 @@ export const ChallengeManagementView = ({ user }) => {
           </button>
         </form>
       </div>
+
+      {/* Inline Create New Recipe Modal */}
+      {showNewRecipeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 dark:border-slate-700">
+            <div className="sticky top-0 bg-white dark:bg-slate-800 px-8 pt-8 pb-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <UtensilsCrossed size={18} className="text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-primary">Create New Recipe</h3>
+                  <p className="text-xs text-slate-500">Recipe will be auto-added to the challenge</p>
+                </div>
+              </div>
+              <button onClick={() => setShowNewRecipeModal(false)} className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 transition-all">
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewRecipe} className="p-8 space-y-5">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Recipe Title *</label>
+                <input
+                  type="text"
+                  value={newRecipe.title}
+                  onChange={e => setNewRecipe({ ...newRecipe, title: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  placeholder="e.g., Spicy Thai Noodles"
+                  required
+                />
+              </div>
+
+              {/* Difficulty / Cook Time / Servings */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">Difficulty</label>
+                  <select
+                    value={newRecipe.difficulty}
+                    onChange={e => setNewRecipe({ ...newRecipe, difficulty: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  >
+                    {['Easy', 'Medium', 'Hard'].map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">Cook Time (min)</label>
+                  <input
+                    type="number" min="1"
+                    value={newRecipe.cook_time_min}
+                    onChange={e => setNewRecipe({ ...newRecipe, cook_time_min: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">Servings</label>
+                  <input
+                    type="number" min="1"
+                    value={newRecipe.servings}
+                    onChange={e => setNewRecipe({ ...newRecipe, servings: e.target.value })}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Dietary tag */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">Dietary Tag</label>
+                <input
+                  type="text"
+                  value={newRecipe.dietary}
+                  onChange={e => setNewRecipe({ ...newRecipe, dietary: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  placeholder="e.g., Vegan, Gluten-Free"
+                />
+              </div>
+
+              {/* Preparation steps */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1.5">Preparation Steps</label>
+                <textarea
+                  value={newRecipe.preparation_steps}
+                  onChange={e => setNewRecipe({ ...newRecipe, preparation_steps: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-sm resize-none"
+                  placeholder="Describe the preparation steps..."
+                />
+              </div>
+
+              {/* Ingredients */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Ingredients</label>
+                  <button
+                    type="button"
+                    onClick={() => setNewRecipeIngredients([...newRecipeIngredients, { ingredient_id: '', qty: '', unit: '' }])}
+                    className="text-xs font-black text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                  >
+                    <Plus size={12} /> Add Row
+                  </button>
+                </div>
+
+                {/* Ingredient search */}
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={ingredientSearch}
+                    onChange={e => setIngredientSearch(e.target.value)}
+                    placeholder="Filter ingredients..."
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  {newRecipeIngredients.map((ing, idx) => {
+                    const selected = allIngredients.find(a => String(a.ingredient_id) === String(ing.ingredient_id));
+                    const allowedUnits = selected?.allowed_units ? selected.allowed_units.split(',').map(u => u.trim()) : ['kg','g','oz','cup','L','ml','tbsp','tsp','pc','pcs'];
+                    const filtered = ingredientSearch
+                      ? allIngredients.filter(a => a.name.toLowerCase().includes(ingredientSearch.toLowerCase()))
+                      : allIngredients;
+                    return (
+                      <div key={idx} className="grid grid-cols-[1fr_80px_90px_32px] gap-2 items-center">
+                        <select
+                          value={ing.ingredient_id}
+                          onChange={e => {
+                            const copy = [...newRecipeIngredients];
+                            copy[idx] = { ...copy[idx], ingredient_id: e.target.value, unit: '' };
+                            setNewRecipeIngredients(copy);
+                          }}
+                          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                        >
+                          <option value="">— ingredient —</option>
+                          {filtered.map(a => <option key={a.ingredient_id} value={a.ingredient_id}>{a.name}</option>)}
+                        </select>
+                        <input
+                          type="number" min="0" step="any"
+                          placeholder="Qty"
+                          value={ing.qty}
+                          onChange={e => { const copy = [...newRecipeIngredients]; copy[idx].qty = e.target.value; setNewRecipeIngredients(copy); }}
+                          className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-xs text-center"
+                        />
+                        <select
+                          value={ing.unit}
+                          onChange={e => { const copy = [...newRecipeIngredients]; copy[idx].unit = e.target.value; setNewRecipeIngredients(copy); }}
+                          className="px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                        >
+                          <option value="">unit</option>
+                          {allowedUnits.map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setNewRecipeIngredients(newRecipeIngredients.filter((_, i) => i !== idx))}
+                          className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 hover:bg-red-100 flex items-center justify-center transition-all"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewRecipeModal(false)}
+                  className="flex-1 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 text-sm font-black text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={recipeCreating || !newRecipe.title.trim()}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-black py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  {recipeCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                  {recipeCreating ? 'Creating...' : 'Create & Add to Challenge'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* My Challenges List */}
       <div>
