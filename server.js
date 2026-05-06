@@ -1683,8 +1683,16 @@ app.post('/api/ai/substitute', async (req, res) => {
                 body: JSON.stringify(payload)
             });
             if (!geminiRes.ok) {
-                const errText = await geminiRes.text();
-                throw new Error(`Gemini API error ${geminiRes.status}: ${errText}`);
+                const errJson = await geminiRes.json().catch(() => ({}));
+                const status = geminiRes.status;
+                if (status === 429) {
+                    return res.status(503).json({ message: 'AI service quota exceeded. Please try again later.' });
+                }
+                if (status === 401 || status === 403) {
+                    return res.status(503).json({ message: 'AI service authentication failed. Please contact support.' });
+                }
+                const detail = errJson?.error?.message || `HTTP ${status}`;
+                throw new Error(`AI service error: ${detail}`);
             }
             const data = await geminiRes.json();
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -1694,7 +1702,7 @@ app.post('/api/ai/substitute', async (req, res) => {
         } catch (err) {
             console.error(`[AI Substitute] Attempt ${attempt + 1} failed:`, err.message);
             if (attempt === 3) {
-                return res.status(502).json({ message: `AI service failed: ${err.message}` });
+                return res.status(502).json({ message: 'AI service is currently unavailable. Please try again shortly.' });
             }
             await new Promise(r => setTimeout(r, delays[attempt]));
         }

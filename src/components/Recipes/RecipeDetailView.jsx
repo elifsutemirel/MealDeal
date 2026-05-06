@@ -226,12 +226,15 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
       });
     } catch (error) {
       console.error("AI Substitution failed:", error);
+      const isQuota = error.message?.toLowerCase().includes('quota');
       setAiResult({
         targetId: aiTargetIngredient.id,
         original: aiTargetIngredient.name,
         suggestion: "Standard Pantry Substitute",
         suggestedPrice: Number(aiTargetIngredient.pricePerUnit) || Number(aiTargetIngredient.currentPrice) || 0,
-        reason: error.message || "The AI service is currently unavailable. We recommend using a standard generic substitute for now."
+        reason: isQuota
+          ? "The AI service has reached its daily limit. Please try again later or use a standard substitute."
+          : (error.message?.length < 120 ? error.message : "The AI service is currently unavailable. Please try again shortly.")
       });
     } finally {
       setAiLoading(false);
