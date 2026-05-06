@@ -2110,7 +2110,7 @@ app.post('/api/challenges/:id/join', async (req, res) => {
     try {
         const homeCookCheck = await pool.query('SELECT user_id FROM "HomeCook" WHERE user_id = $1', [userId]);
         if (homeCookCheck.rows.length === 0) {
-            return res.status(403).json({ message: 'Only Home Cooks can join challenges.' });
+            return res.status(403).json({ message: 'Only Home Cooks can join challenges. Verified Chefs are not eligible.' });
         }
         await pool.query(
             `INSERT INTO "HomeCook_Challenge" (user_id, challenge_id, joined_at)
@@ -2619,15 +2619,15 @@ app.get('/api/leaderboard/global', async (req, res) => {
                     '[]'::json
                 ) AS won_challenges
             FROM "User" u
-            LEFT JOIN "HomeCook" hc ON hc.user_id = u.user_id
-            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id AND vc.status IN ('active', 'approved')
+            JOIN "HomeCook" hc ON hc.user_id = u.user_id
             LEFT JOIN "Administrator" a ON a.user_id = u.user_id
             LEFT JOIN "LocalSupplier" ls ON ls.user_id = u.user_id
+            LEFT JOIN "VerifiedChef" vc ON vc.user_id = u.user_id
             LEFT JOIN "KitchenChallenge" kc ON kc.winner_id = u.user_id
             LEFT JOIN "ChallengeReward" cr ON cr.user_id = u.user_id AND cr.challenge_id = kc.challenge_id
             WHERE a.user_id IS NULL
               AND ls.user_id IS NULL
-              AND (hc.user_id IS NOT NULL OR vc.user_id IS NOT NULL)
+              AND vc.user_id IS NULL
             GROUP BY u.user_id, u.username, u.total
             ORDER BY challenges_won DESC, cooked_count DESC, meal_coins DESC;
         `;

@@ -78,8 +78,8 @@ export const ChallengesView = ({ user }) => {
   const handleJoin = async (e, challengeId) => {
     e.stopPropagation();
     if (!user) return alert('Please sign in to join a challenge.');
-    if (!['Home Cook', 'Verified Chef'].includes(user.role)) {
-      return alert('Only Home Cooks can join challenges.');
+    if (user.role !== 'Home Cook') {
+      return alert('Only Home Cooks can join challenges. Verified Chefs are not eligible.');
     }
 
     setJoiningId(challengeId);
@@ -195,7 +195,7 @@ export const ChallengesView = ({ user }) => {
                 { key: 'active', label: 'Active' },
                 { key: 'upcoming', label: 'Upcoming' },
                 { key: 'completed', label: 'Completed' },
-                ...(['Home Cook', 'Verified Chef'].includes(user?.role) ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
+                ...(user?.role === 'Home Cook' ? [{ key: 'joined', label: `Joined (${joinedIds.size})` }] : []),
               ].map(({ key: f, label }) => (
                 <button
                   key={f}
@@ -231,7 +231,7 @@ export const ChallengesView = ({ user }) => {
 
               const isJoined = joinedIds.has(challenge.challenge_id);
               const isJoining = joiningId === challenge.challenge_id;
-              const canJoinChallenge = ['Home Cook', 'Verified Chef'].includes(user?.role);
+              const canJoinChallenge = user?.role === 'Home Cook';
               const status = getChallengeStatus(challenge);
               
               const endDate = new Date(challenge.end_date);
