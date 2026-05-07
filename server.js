@@ -580,7 +580,7 @@ app.get('/api/admin/dashboard-summary', async (req, res) => {
                 (SELECT COUNT(*) FROM "HomeCook")::int AS home_cooks,
                 (SELECT COUNT(*) FROM "VerifiedChef" WHERE status IN ('active', 'approved'))::int AS verified_chefs,
                 (SELECT COUNT(*) FROM "Recipe")::int AS total_recipes,
-                (SELECT COUNT(*) FROM "KitchenChallenge" WHERE start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE)::int AS active_challenges,
+                (SELECT COUNT(*) FROM "KitchenChallenge" WHERE start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE AND winner_id IS NULL)::int AS active_challenges,
                 (SELECT COUNT(*) FROM "LocalSupplier")::int AS suppliers,
                 (SELECT COUNT(*) FROM "Comment")::int AS comments,
                 (SELECT COUNT(*) FROM "Order")::int AS orders;
@@ -668,6 +668,7 @@ app.get('/api/admin/challenges', async (req, res) => {
                 kc.end_date,
                 COUNT(DISTINCT hcc.user_id)::int AS participants,
                 CASE
+                    WHEN kc.winner_id IS NOT NULL THEN 'completed'
                     WHEN kc.start_date > CURRENT_DATE THEN 'upcoming'
                     WHEN kc.end_date < CURRENT_DATE THEN 'completed'
                     ELSE 'active'
@@ -1205,34 +1206,49 @@ app.get('/api/ingredients', async (req, res) => {
     }
 });
 
-// SEARCH External Ingredients via USDA API
+// SEARCH Ingredients (Local DB + USDA fallback)
 app.get('/api/ingredients/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json([]);
+    
     try {
-        const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&api_key=DEMO_KEY&pageSize=30`);
-        const data = await response.json();
+        // 1. Search local DB first
+        const localResult = await pool.query(
+            'SELECT ingredient_id, name, allowed_units FROM "Ingredient" WHERE name ILIKE $1 ORDER BY name ASC LIMIT 10',
+            [`%${query}%`]
+        );
 
-        if (!data.foods) return res.json([]);
+        let results = localResult.rows;
 
-        const uniqueNames = new Set();
-        const results = [];
+        // 2. If we have fewer than 5 results, try USDA API as a fallback/addition
+        if (results.length < 5) {
+            try {
+                const response = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&api_key=DEMO_KEY&pageSize=10`);
+                const data = await response.json();
 
-        for (const food of data.foods) {
-            const lowerName = food.description.toLowerCase();
-            if (!uniqueNames.has(lowerName)) {
-                uniqueNames.add(lowerName);
-                results.push({
-                    ingredient_id: `external-${food.fdcId}`,
-                    name: food.description
-                });
-                if (results.length >= 10) break;
+                if (data.foods) {
+                    const uniqueNames = new Set(results.map(r => r.name.toLowerCase()));
+                    for (const food of data.foods) {
+                        const lowerName = food.description.toLowerCase();
+                        if (!uniqueNames.has(lowerName)) {
+                            uniqueNames.add(lowerName);
+                            results.push({
+                                ingredient_id: `external-${food.fdcId}`,
+                                name: food.description,
+                                allowed_units: 'kg,g,oz,cup,L,ml,tbsp,tsp,pc,pcs,adet' // Default units for external
+                            });
+                            if (results.length >= 20) break;
+                        }
+                    }
+                }
+            } catch (usdaErr) {
+                console.error("USDA API Search Error (fallback):", usdaErr);
             }
         }
 
         res.json(results);
     } catch (err) {
-        console.error("USDA API Search Error:", err);
+        console.error("Ingredient Search Error:", err);
         res.status(500).json({ message: "Error searching ingredients" });
     }
 });
@@ -2141,6 +2157,7 @@ app.get('/api/challenges', async (req, res) => {
                 COUNT(DISTINCT hcc.user_id)       AS participants,
                 COUNT(DISTINCT kcr.recipe_id)     AS recipe_count,
                 CASE
+                    WHEN kc.winner_id IS NOT NULL THEN 'completed'
                     WHEN kc.start_date > CURRENT_DATE THEN 'upcoming'
                     WHEN kc.end_date   < CURRENT_DATE THEN 'completed'
                     ELSE 'active'

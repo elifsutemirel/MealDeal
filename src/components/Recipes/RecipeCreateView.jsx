@@ -374,14 +374,14 @@ export const RecipeCreateView = ({ user, onCreated }) => {
             </div>
 
             <div className="mb-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
-              <label className="recipe-label">Search USDA Database for Ingredients</label>
+              <label className="recipe-label">Search Ingredient Pool</label>
               <div className="flex gap-2 mt-2">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleSearch())}
-                  placeholder="e.g. Tomato, raw"
+                  placeholder="e.g. Quinoa, Chicken Breast, Olive Oil..."
                   className="recipe-field flex-1"
                 />
                 <button type="button" onClick={handleSearch} disabled={isSearching} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-6 py-2 rounded-xl transition-all whitespace-nowrap text-sm">
