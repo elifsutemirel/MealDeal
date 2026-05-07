@@ -1470,6 +1470,43 @@ app.get('/api/meallist/:id/recipes', async (req, res) => {
 // RECIPE DISCOVERY ENDPOINT
 // =============================================================
 
+// GET /api/recipes/top-cooked — Top 10 most cooked public recipes
+app.get('/api/recipes/top-cooked', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                r.recipe_id AS id,
+                r.title,
+                r.dietary_tag,
+                r.cook_time_min,
+                r.difficulty_level,
+                r.base_servings,
+                COUNT(c.comment_id) FILTER (WHERE c.cooked_at IS NOT NULL) AS cook_count,
+                (
+                    SELECT COALESCE(json_agg(json_build_object(
+                        'ingredient_id', i.ingredient_id,
+                        'name', i.name,
+                        'qty', ri.qty,
+                        'unit', ri.unit
+                    )), '[]'::json)
+                    FROM "Recipe_Ingredient" ri
+                    JOIN "Ingredient" i ON i.ingredient_id = ri.ingredient_id
+                    WHERE ri.recipe_id = r.recipe_id
+                ) AS ingredients
+            FROM "Recipe" r
+            LEFT JOIN "Comment" c ON c.recipe_id = r.recipe_id
+            WHERE r.visibility = 'public'
+            GROUP BY r.recipe_id
+            ORDER BY cook_count DESC, r.recipe_id ASC
+            LIMIT 10
+        `);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('TOP COOKED ERROR:', error);
+        res.status(500).json({ message: 'Error fetching top cooked recipes.', detail: error.message });
+    }
+});
+
 // GET /api/recipes — Fetch all public recipes with their ingredients
 app.get('/api/recipes', async (req, res) => {
     try {

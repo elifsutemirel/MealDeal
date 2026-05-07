@@ -59,7 +59,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     });
   };
 
-  const [servings, setServings] = useState(2);
+  const [servings, setServings] = useState(recipe.base_servings || 2);
   const [activeSubView, setActiveSubView] = useState('ingredients');
   const [ingredientsState, setIngredientsState] = useState(
     mapIngredientsWithSelection(recipe.ingredients)
@@ -88,6 +88,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const canReview = user && (user.role === 'Home Cook' || user.role === 'Verified Chef');
 
   useEffect(() => {
+    setServings(recipe.base_servings || 2);
     setIngredientsState(mapIngredientsWithSelection(recipe.ingredients));
   }, [recipe.id, recipe.ingredients]);
 

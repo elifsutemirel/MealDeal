@@ -119,6 +119,12 @@ export const VerifiedChefApplicationPage = ({ user, setUser }) => {
     setSubmitting(true);
     setMessage('');
 
+    if (!cvFile || !certificateFile) {
+      setMessage('Please upload both a CV file and a certificate file before submitting.');
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const body = new FormData();
       body.append('userId', user.id);
@@ -248,7 +254,7 @@ export const VerifiedChefApplicationPage = ({ user, setUser }) => {
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-slate-900 dark:text-white">Documents</h2>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-bold">Upload PDF or image proof. Max 5 MB each.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-bold">CV and certificate are required. Max 5 MB each.</p>
                   </div>
                 </div>
 
@@ -256,9 +262,9 @@ export const VerifiedChefApplicationPage = ({ user, setUser }) => {
                   <TextInput value={form.portfolio_url} onChange={(value) => update('portfolio_url', value)} placeholder="https://instagram.com/yourfoodpage" />
                 </Field>
 
-                <FileInput label="CV file" file={cvFile} onChange={setCvFile} helper="PDF, JPG, PNG, or WEBP" />
+                <FileInput label="CV file *" file={cvFile} onChange={setCvFile} helper="PDF, JPG, PNG, or WEBP — required" />
 
-                <FileInput label="Certificate file" file={certificateFile} onChange={setCertificateFile} helper="Certificate PDF/image, if you have one" />
+                <FileInput label="Certificate file *" file={certificateFile} onChange={setCertificateFile} helper="Certificate PDF/image — required" />
 
                 <Field label="Extra notes" helper="Optional. Paste CV highlights if you do not want to upload a CV.">
                   <TextArea value={form.cv_text} onChange={(value) => update('cv_text', value)} placeholder="Education, work history, certificate details, awards..." rows={4} />
@@ -268,7 +274,7 @@ export const VerifiedChefApplicationPage = ({ user, setUser }) => {
           </div>
 
           <div className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3">
-            <button disabled={submitting} className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest">
+            <button disabled={submitting || !cvFile || !certificateFile} className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest">
               <Send size={16} /> {submitting ? 'Submitting...' : 'Submit Application'}
             </button>
             {message && <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{message}</p>}

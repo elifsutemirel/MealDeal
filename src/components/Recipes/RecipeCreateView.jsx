@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChefHat, Clock3, Plus, Sparkles, Trash2, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ChefHat, Clock3, Flame, Plus, Sparkles, Trash2, UtensilsCrossed } from 'lucide-react';
 import './RecipeCreateView.css';
 import { UNIT_LABELS } from '../../utils/unitConversion';
 
@@ -37,12 +37,17 @@ export const RecipeCreateView = ({ user, onCreated }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [topRecipes, setTopRecipes] = useState([]);
 
   useEffect(() => {
     fetch('/api/ingredients')
       .then(r => r.json())
       .then(data => setAllIngredients(data))
       .catch(() => setAllIngredients([]));
+    fetch('/api/recipes/top-cooked')
+      .then(r => r.json())
+      .then(data => setTopRecipes(Array.isArray(data) ? data : []))
+      .catch(() => setTopRecipes([]));
   }, []);
 
   const ingredientCount = useMemo(
@@ -50,7 +55,8 @@ export const RecipeCreateView = ({ user, onCreated }) => {
     [ingredients]
   );
 
-  const canSubmit = title.trim() && cookTime > 0 && servings > 0;
+  const canSubmit = title.trim() && cookTime > 0 && servings > 0 &&
+    ingredients.every(ing => !ing.ingredient_id || (ing.qty && Number(ing.qty) > 0));
 
   const resetForm = () => {
     setTitle('');
@@ -64,18 +70,28 @@ export const RecipeCreateView = ({ user, onCreated }) => {
     setMessage('');
   };
 
-  const applyDemoRecipe = () => {
-    setTitle('Charred Lemon Herb Chicken');
-    setCookTime(45);
-    setDifficulty('Medium');
-    setDietary('High-Protein');
-    setServings(4);
+  const applyTopRecipe = (recipe) => {
+    setTitle(recipe.title);
+    setCookTime(recipe.cook_time_min);
+    setDifficulty(recipe.difficulty_level || 'Easy');
+    setDietary(recipe.dietary_tag || '');
+    setServings(recipe.base_servings || 2);
     setVisibility('public');
-    setIngredients([
-      { ingredient_id: allIngredients[0]?.ingredient_id || '', qty: '2', unit: 'cups' },
-      { ingredient_id: allIngredients[1]?.ingredient_id || '', qty: '1', unit: 'tbsp' },
-    ]);
-    setMessage('Demo values loaded.');
+    const ings = Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0
+      ? recipe.ingredients.map(i => ({ ingredient_id: String(i.ingredient_id), qty: String(i.qty), unit: i.unit }))
+      : [{ ...emptyIngredient }];
+    // Ensure all ingredient objects are in allIngredients list
+    if (Array.isArray(recipe.ingredients)) {
+      setAllIngredients(prev => {
+        const map = new Map(prev.map(a => [String(a.ingredient_id), a]));
+        recipe.ingredients.forEach(i => {
+          if (!map.has(String(i.ingredient_id))) map.set(String(i.ingredient_id), { ingredient_id: i.ingredient_id, name: i.name, allowed_units: i.unit });
+        });
+        return Array.from(map.values());
+      });
+    }
+    setIngredients(ings);
+    setMessage(`Loaded "${recipe.title}" as a starting point.`);
   };
 
   const addIngredientRow = () => {
@@ -215,13 +231,25 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                 <p className="mt-1 text-xl font-black text-slate-900 dark:text-white">{ingredientCount}</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={applyDemoRecipe}
-              className="recipe-demo-button w-full inline-flex items-center justify-center gap-2"
-            >
-              <Sparkles size={16} /> Load demo recipe
-            </button>
+            {topRecipes.length > 0 && (
+              <div className="mt-2">
+                <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-2 flex items-center gap-1"><Flame size={11} className="text-orange-400" /> Top 10 most cooked</p>
+                <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1">
+                  {topRecipes.map((r, i) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => applyTopRecipe(r)}
+                      className="w-full text-left px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-300 transition-all group"
+                    >
+                      <span className="text-[10px] font-black text-slate-400 group-hover:text-emerald-500 mr-1">#{i + 1}</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{r.title}</span>
+                      <span className="ml-1 text-[10px] text-slate-400">{r.cook_time_min}m</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -389,11 +417,12 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                   </select>
                   <input
                     type="number"
-                    min="0"
+                    min="0.01"
                     step="0.01"
                     value={ing.qty}
                     onChange={(e) => updateIngredient(idx, 'qty', e.target.value)}
                     placeholder="Qty"
+                    required={!!ing.ingredient_id}
                     className="recipe-field"
                   />
                   <select

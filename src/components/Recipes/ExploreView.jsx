@@ -6,7 +6,7 @@ export const ExploreView = ({ onSelectRecipe }) => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dietFilter, setDietFilter] = useState('All');
-  const [maxTime, setMaxTime] = useState(60);
+  const [maxTime, setMaxTime] = useState(240);
   const [minRating, setMinRating] = useState(0);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export const ExploreView = ({ onSelectRecipe }) => {
       const matchesSearch = recipe.title.toLowerCase().includes(searchLower) ||
         recipe.ingredients.some(i => i.name.toLowerCase().includes(searchLower)) ||
         recipe.chef.toLowerCase().includes(searchLower);
-      const matchesDiet = dietFilter === 'All' || recipe.category === dietFilter;
+      const matchesDiet = dietFilter === 'All' || (recipe.category || '').toLowerCase() === dietFilter.toLowerCase();
       const matchesTime = recipe.time <= maxTime;
       const matchesRating = recipe.rating >= minRating;
       return matchesSearch && matchesDiet && matchesTime && matchesRating;
@@ -77,7 +77,7 @@ export const ExploreView = ({ onSelectRecipe }) => {
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Max Time:</span>
               <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-                <input type="range" min="10" max="60" step="5" value={maxTime} onChange={(e) => setMaxTime(Number(e.target.value))} className="w-24 accent-emerald-500" />
+                <input type="range" min="10" max="240" step="5" value={maxTime} onChange={(e) => setMaxTime(Number(e.target.value))} className="w-24 accent-emerald-500" />
                 <span className="text-xs font-bold w-12 text-slate-700 dark:text-slate-300">{maxTime} min</span>
               </div>
             </div>
