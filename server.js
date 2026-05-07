@@ -1755,7 +1755,7 @@ app.post('/api/ai/substitute', async (req, res) => {
     const systemPrompt = "You are an expert culinary AI assistant for 'MealDeal', a Farm-to-Table marketplace. A user needs an ingredient substitution based on local availability, dietary restrictions, or personal requests. You must return a JSON object with strictly these three fields: 'suggestion' (the specific name of the substitute), 'suggestedPrice' (a reasonable estimated unit price as a number, e.g., 1.50), and 'reason' (a 1-2 sentence explanation of why this is a good substitute based on the user's prompt).";
     const prompt = `I need a substitute for ${ingredientName}. My specific request or constraint is: "${userPrompt}". Currently, the original ingredient costs $${Number(currentPrice || 0).toFixed(2)} per unit. Give me a creative and practical alternative.`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     const payload = {
         contents: [{ parts: [{ text: prompt }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -1785,7 +1785,7 @@ app.post('/api/ai/substitute', async (req, res) => {
                 const errJson = await geminiRes.json().catch(() => ({}));
                 const status = geminiRes.status;
                 if (status === 429) {
-                    return res.status(503).json({ message: 'AI service quota exceeded. Please try again later.' });
+                    throw new Error('AI service quota exceeded (Rate Limit). Retrying...');
                 }
                 if (status === 401 || status === 403) {
                     return res.status(503).json({ message: 'AI service authentication failed. Please contact support.' });
