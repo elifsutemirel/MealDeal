@@ -336,12 +336,7 @@ export const ProfileView = ({ user, setUser }) => {
                   </div>
                 </form>
                 
-                <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Forgot Password?</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    If you are logged out and forget your password, you will be able to reset it from the login screen (simulated). Since you are currently logged in, you can directly change your password above using your current password.
-                  </p>
-                </div>
+
               </div>
             )}
 
