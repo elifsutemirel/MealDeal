@@ -577,7 +577,7 @@ app.get('/api/admin/dashboard-summary', async (req, res) => {
         const result = await pool.query(`
             SELECT
                 (SELECT COUNT(*) FROM "VerifiedChefApplication" WHERE status = 'pending')::int AS pending_applications,
-                (SELECT COUNT(*) FROM "HomeCook")::int AS home_cooks,
+                (SELECT COUNT(*) FROM "HomeCook" hc WHERE NOT EXISTS (SELECT 1 FROM "VerifiedChef" vc WHERE vc.user_id = hc.user_id AND vc.status IN ('active', 'approved')))::int AS home_cooks,
                 (SELECT COUNT(*) FROM "VerifiedChef" WHERE status IN ('active', 'approved'))::int AS verified_chefs,
                 (SELECT COUNT(*) FROM "Recipe")::int AS total_recipes,
                 (SELECT COUNT(*) FROM "KitchenChallenge" WHERE start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE AND winner_id IS NULL)::int AS active_challenges,
