@@ -1656,11 +1656,11 @@ app.get('/api/recipes', async (req, res) => {
         const recipeIds = recipes.map(r => r.id);
         if (recipeIds.length > 0) {
             const reviewsResult = await pool.query(
-                `SELECT c.comment_id, c.recipe_id, c.comment_text, c.rating, c.creation_time, u.username
+                `SELECT c.comment_id, c.recipe_id, c.comment_text, c.rating, c.creation_time, u.username, c.parent_comment_id
                  FROM "Comment" c
                  JOIN "User" u ON u.user_id = c.user_id
                  WHERE c.recipe_id = ANY($1) AND c.comment_text IS NOT NULL
-                 ORDER BY c.creation_time DESC`,
+                 ORDER BY c.creation_time ASC`,
                 [recipeIds]
             );
             // Attach reviews to their recipes
@@ -1672,7 +1672,8 @@ app.get('/api/recipes', async (req, res) => {
                         user: review.username,
                         comment: review.comment_text,
                         rating: review.rating,
-                        date: review.creation_time
+                        date: review.creation_time,
+                        parentId: review.parent_comment_id
                     });
                 }
             }
@@ -1815,11 +1816,11 @@ app.post('/api/ai/substitute', async (req, res) => {
 app.get('/api/recipe/:id/reviews', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT c.comment_id, c.comment_text, c.rating, c.creation_time, u.username
+            `SELECT c.comment_id, c.comment_text, c.rating, c.creation_time, u.username, c.parent_comment_id
              FROM "Comment" c
              JOIN "User" u ON u.user_id = c.user_id
              WHERE c.recipe_id = $1 AND c.comment_text IS NOT NULL
-             ORDER BY c.creation_time DESC`,
+             ORDER BY c.creation_time ASC`,
             [req.params.id]
         );
         res.json(result.rows.map(r => ({
@@ -1827,7 +1828,8 @@ app.get('/api/recipe/:id/reviews', async (req, res) => {
             user: r.username,
             comment: r.comment_text,
             rating: r.rating,
-            date: r.creation_time
+            date: r.creation_time,
+            parentId: r.parent_comment_id
         })));
     } catch (error) {
         console.error(error);
@@ -1837,14 +1839,15 @@ app.get('/api/recipe/:id/reviews', async (req, res) => {
 
 // POST a new review (only Home Cooks and Verified Chefs)
 app.post('/api/recipe/:id/review', async (req, res) => {
-    const { userId, rating, comment } = req.body;
+    const { userId, rating, comment, parentCommentId } = req.body;
     const recipeId = req.params.id;
 
-    if (!userId || !comment || !rating) {
-        return res.status(400).json({ message: 'userId, rating, and comment are required.' });
+    if (!userId || !comment) {
+        return res.status(400).json({ message: 'userId and comment are required.' });
     }
-    if (rating < 1 || rating > 5) {
-        return res.status(400).json({ message: 'Rating must be between 1 and 5.' });
+    // Rating is required for top-level reviews, optional for replies
+    if (!parentCommentId && (!rating || rating < 1 || rating > 5)) {
+        return res.status(400).json({ message: 'Rating between 1 and 5 is required for top-level reviews.' });
     }
 
     try {
@@ -1862,24 +1865,26 @@ app.post('/api/recipe/:id/review', async (req, res) => {
                 id: Date.now(),
                 user: userCheck.rows[0].username,
                 comment,
-                rating,
-                date: new Date().toISOString()
+                rating: rating || null,
+                date: new Date().toISOString(),
+                parentId: parentCommentId || null
             });
         }
 
         const result = await pool.query(
-            `INSERT INTO "Comment" (user_id, recipe_id, comment_text, rating, creation_time, rated_at)
-             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `INSERT INTO "Comment" (user_id, recipe_id, comment_text, rating, creation_time, rated_at, parent_comment_id)
+             VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6)
              RETURNING comment_id, creation_time`,
-            [userId, recipeId, comment, rating]
+            [userId, recipeId, comment, rating || null, rating ? new Date() : null, parentCommentId || null]
         );
 
         res.status(201).json({
             id: result.rows[0].comment_id,
             user: userCheck.rows[0].username,
             comment,
-            rating,
-            date: result.rows[0].creation_time
+            rating: rating || null,
+            date: result.rows[0].creation_time,
+            parentId: parentCommentId || null
         });
     } catch (error) {
         console.error('REVIEW POST ERROR:', error);

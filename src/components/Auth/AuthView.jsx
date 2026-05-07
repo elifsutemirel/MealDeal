@@ -230,15 +230,6 @@ export const AuthView = ({ onLogin, onGuest, darkMode, setDarkMode }) => {
                 <div>
                   <div className="flex justify-between mb-2">
                     <label className="text-[10px] font-black uppercase text-slate-500 block tracking-widest">Password</label>
-                    {isLogin && (
-                      <button
-                        type="button"
-                        onClick={() => setInfoMsg('A password reset link has been sent to your email (simulated).')}
-                        className="text-[10px] font-bold text-emerald-500 hover:underline"
-                      >
-                        Forgot Password?
-                      </button>
-                    )}
                   </div>
                   <input
                     required

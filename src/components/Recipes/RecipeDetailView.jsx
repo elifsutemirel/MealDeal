@@ -84,6 +84,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewError, setReviewError] = useState(null);
   const [reviewSuccess, setReviewSuccess] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null); // Review object we are replying to
 
   const canReview = user && (user.role === 'Home Cook' || user.role === 'Verified Chef');
 
@@ -118,8 +119,13 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     };
   }, [recipe.id]);
 
-  const handleSubmitReview = async () => {
-    if (!reviewText.trim() || reviewRating === 0) return;
+  const handleSubmitReview = async (parentId = null) => {
+    const isReply = !!parentId;
+    const text = isReply ? replyText.trim() : reviewText.trim();
+    const rating = isReply ? 0 : reviewRating;
+
+    if (!text || (!isReply && rating === 0)) return;
+
     setReviewSubmitting(true);
     setReviewError(null);
     try {
@@ -128,8 +134,9 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          rating: reviewRating,
-          comment: reviewText.trim()
+          rating: rating || null,
+          comment: text,
+          parentCommentId: parentId
         })
       });
       if (!res.ok) {
@@ -137,9 +144,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         throw new Error(data.message || 'Failed to post review');
       }
       const newReview = await res.json();
-      setReviews(prev => [newReview, ...prev]);
-      setReviewText('');
-      setReviewRating(0);
+      setReviews(prev => [...prev, newReview]);
+      
+      if (isReply) {
+        setReplyText('');
+        setReplyingTo(null);
+      } else {
+        setReviewText('');
+        setReviewRating(0);
+      }
+      
       setReviewSuccess(true);
       setTimeout(() => setReviewSuccess(false), 3000);
     } catch (err) {
@@ -147,6 +161,107 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     } finally {
       setReviewSubmitting(false);
     }
+  };
+
+  const [replyText, setReplyText] = useState('');
+
+  const nestedReviews = useMemo(() => {
+    const map = {};
+    const roots = [];
+    reviews.forEach(r => {
+      map[r.id] = { ...r, replies: [] };
+    });
+    reviews.forEach(r => {
+      if (r.parentId && map[r.parentId]) {
+        map[r.parentId].replies.push(map[r.id]);
+      } else {
+        roots.push(map[r.id]);
+      }
+    });
+    return roots;
+  }, [reviews]);
+
+  const ReviewItem = ({ review, depth = 0 }) => {
+    const isReplying = replyingTo?.id === review.id;
+
+    return (
+      <div className={`space-y-4 ${depth > 0 ? 'ml-6 md:ml-10 mt-4 border-l-2 border-slate-100 dark:border-slate-700 pl-4' : ''}`}>
+        <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl animate-in fade-in transition-all hover:shadow-md border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px] uppercase">
+                {review.user?.[0] || '?'}
+              </div>
+              <span className="font-bold text-slate-800 dark:text-white text-sm">{review.user}</span>
+              {review.parentId && (
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <ArrowRight size={10} /> reply
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col items-end">
+              {review.rating && (
+                <div className="flex items-center gap-0.5 mb-1">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} size={12} className={`${s <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-600'}`} />
+                  ))}
+                </div>
+              )}
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                {new Date(review.date).toLocaleDateString()}
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-4 italic">"{review.comment}"</p>
+          
+          {canReview && !isReplying && (
+            <button 
+              onClick={() => {
+                setReplyingTo(review);
+                setReplyText('');
+              }}
+              className="text-[10px] font-black text-emerald-500 uppercase tracking-widest hover:text-emerald-600 flex items-center gap-1 transition-colors"
+            >
+              Reply to this
+            </button>
+          )}
+
+          {isReplying && (
+            <div className="mt-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-emerald-100 dark:border-emerald-900/50 animate-in slide-in-from-top-2">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] font-black uppercase text-emerald-600 tracking-widest">Replying to {review.user}</span>
+                <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+              </div>
+              <textarea
+                autoFocus
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Write your reply..."
+                className="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-100 dark:border-slate-600 rounded-lg p-3 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 min-h-[80px] resize-none mb-3"
+              />
+              <div className="flex justify-end">
+                <button
+                  disabled={!replyText.trim() || reviewSubmitting}
+                  onClick={() => handleSubmitReview(review.id)}
+                  className="bg-emerald-500 text-white px-4 py-2 rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {reviewSubmitting ? <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent" /> : <Send size={12} />}
+                  Post Reply
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {review.replies && review.replies.length > 0 && (
+          <div className="space-y-4">
+            {review.replies.map(reply => (
+              <ReviewItem key={reply.id} review={reply} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Recalculate quantities and price based on servings and selection
@@ -558,7 +673,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                       className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm text-slate-900 dark:text-white outline-none focus:border-emerald-500 h-20 resize-none transition-colors placeholder:text-slate-400 dark:placeholder:text-slate-400"
                     />
                     <button
-                      onClick={handleSubmitReview}
+                      onClick={() => handleSubmitReview()}
                       disabled={!reviewText.trim() || reviewRating === 0 || reviewSubmitting}
                       className={`mt-3 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-2 transition-all ${!reviewText.trim() || reviewRating === 0 ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95 shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20'}`}
                     >
@@ -579,24 +694,14 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                 )}
 
                 {/* Existing Reviews */}
-                {reviews.length === 0 ? (
+                {nestedReviews.length === 0 ? (
                   <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-500 uppercase tracking-widest">No reviews yet</div>
                 ) : (
-                  reviews.map((rev, idx) => (
-                    <div key={rev.id || idx} className="p-6 bg-slate-50 dark:bg-slate-700 rounded-2xl animate-in fade-in">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-bold text-slate-800 dark:text-white text-sm">{rev.user}</span>
-                        {rev.rating && (
-                          <div className="flex items-center gap-0.5">
-                            {[1,2,3,4,5].map(s => (
-                              <Star key={s} size={12} className={`${s <= rev.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 italic">"{rev.comment}"</p>
-                    </div>
-                  ))
+                  <div className="space-y-8">
+                    {nestedReviews.map((rev) => (
+                      <ReviewItem key={rev.id} review={rev} />
+                    ))}
+                  </div>
                 )}
               </div>
             )}
