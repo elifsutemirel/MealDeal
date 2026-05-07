@@ -885,6 +885,49 @@ app.post('/api/recipes', async (req, res) => {
     }
 });
 
+// DELETE Recipe — allowed for the recipe creator or an Administrator
+app.delete('/api/recipes/:id', async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    try {
+        // Fetch the recipe and check existence
+        const recipeCheck = await pool.query(
+            'SELECT recipe_id, creator_id FROM "Recipe" WHERE recipe_id = $1',
+            [id]
+        );
+        if (recipeCheck.rows.length === 0) {
+            return res.status(404).json({ message: 'Recipe not found.' });
+        }
+
+        const recipe = recipeCheck.rows[0];
+
+        // Check if user is the creator
+        const isCreator = parseInt(recipe.creator_id) === parseInt(userId);
+
+        // Check if user is an admin
+        const adminCheck = await pool.query(
+            'SELECT user_id FROM "Administrator" WHERE user_id = $1',
+            [userId]
+        );
+        const isAdmin = adminCheck.rows.length > 0;
+
+        if (!isCreator && !isAdmin) {
+            return res.status(403).json({ message: 'Only the recipe creator or an administrator can delete this recipe.' });
+        }
+
+        await pool.query('DELETE FROM "Recipe" WHERE recipe_id = $1', [id]);
+        res.json({ message: 'Recipe deleted successfully.' });
+    } catch (error) {
+        console.error('DELETE RECIPE ERROR:', error);
+        res.status(500).json({ message: 'Error deleting recipe.', detail: error.message });
+    }
+});
+
 // UPDATE PROFILE (username, email)
 app.put('/api/auth/profile', async (req, res) => {
     const { user_id, username, email } = req.body;
@@ -1513,6 +1556,7 @@ app.get('/api/recipes', async (req, res) => {
         const query = `
             SELECT
                 r.recipe_id AS id,
+                r.creator_id,
                 r.title,
                 r.description,
                 r.preparation_steps,
@@ -1574,6 +1618,7 @@ app.get('/api/recipes', async (req, res) => {
 
         const recipes = result.rows.map((row, index) => ({
             id: row.id,
+            creator_id: row.creator_id,
             title: row.title,
             description: row.description,
             chef: row.chef,

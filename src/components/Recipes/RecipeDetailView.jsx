@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send } from 'lucide-react';
+import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send, Trash2 } from 'lucide-react';
 import { getPricePerRecipeUnit, canSupplierFulfill, areUnitsCompatible, convertAmount } from '../../utils/unitConversion';
 
-export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList }) => {
+export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList, onDelete }) => {
   const mapIngredientsWithSelection = (nextIngredients, previousIngredients = []) => {
     const previousById = new Map(previousIngredients.map(i => [i.id?.toString(), i]));
 
@@ -311,6 +311,29 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     setAiResult(null);
   };
 
+  const canDelete = user && (parseInt(user.id) === parseInt(recipe.creator_id) || user.role === 'Administrator');
+
+  const handleDeleteRecipe = async () => {
+    if (!window.confirm('Permanently delete this recipe? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/recipes/${recipe.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+      if (res.ok) {
+        if (onDelete) onDelete(recipe.id);
+        else onBack();
+      } else {
+        const data = await res.json();
+        alert(data.message || 'Failed to delete recipe.');
+      }
+    } catch (err) {
+      console.error('Delete recipe error:', err);
+      alert('Failed to delete recipe.');
+    }
+  };
+
   const handleOpenMealListModal = async () => {
     if (!user) {
       alert('Please sign in to save recipes to meal lists');
@@ -355,9 +378,19 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
 
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-500 pt-8 pb-20">
-      <button onClick={onBack} className="flex items-center gap-2 text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 mb-8 font-black text-[10px] uppercase tracking-widest">
-        <ArrowLeft size={16} /> Back to discovery
-      </button>
+      <div className="flex items-center justify-between mb-8">
+        <button onClick={onBack} className="flex items-center gap-2 text-slate-400 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-300 font-black text-[10px] uppercase tracking-widest">
+          <ArrowLeft size={16} /> Back to discovery
+        </button>
+        {canDelete && (
+          <button
+            onClick={handleDeleteRecipe}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            <Trash2 size={14} /> Delete Recipe
+          </button>
+        )}
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-12">
         <div className="flex-1">

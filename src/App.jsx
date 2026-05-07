@@ -200,7 +200,7 @@ export default function App() {
 
           <main className="max-w-7xl mx-auto px-6 py-4">
             {selectedRecipe ? (
-              <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} />
+              <RecipeDetailView recipe={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToCart={handleAddToCart} user={user} onRecipeAddedToList={fetchMealLists} onDelete={() => setSelectedRecipe(null)} />
             ) : (
               <>
                 {currentTab === 'explore' && <ExploreView onSelectRecipe={setSelectedRecipe} />}
