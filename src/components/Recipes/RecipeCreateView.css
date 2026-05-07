@@ -359,6 +359,17 @@
   box-shadow: 0 16px 28px rgba(15, 23, 42, 0.18);
 }
 
+/* Keep disabled primary buttons readable: avoid reducing text opacity and ensure sufficient contrast */
+.recipe-primary-button:disabled,
+.recipe-primary-button[disabled] {
+  opacity: 1 !important;
+  cursor: not-allowed;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #374151, #1f2937) !important;
+  box-shadow: none !important;
+  filter: brightness(0.9) !important;
+}
+
 .recipe-demo-button {
   color: #fff;
   background: linear-gradient(135deg, #10b981, #84cc16);
