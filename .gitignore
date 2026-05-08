@@ -3,3 +3,7 @@
 /docker-compose.yml
 /uploads
 .env
+
+screenshots/
+scripts/
+USER_MANUAL_3_7.md

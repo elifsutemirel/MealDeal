@@ -8,6 +8,7 @@ export const ChallengeManagementView = ({ user }) => {
   const [selectedChallengeForRecipes, setSelectedChallengeForRecipes] = useState(null);
   const [selectedChallengeForSubmissions, setSelectedChallengeForSubmissions] = useState(null);
   const [selectedChallengeForParticipants, setSelectedChallengeForParticipants] = useState(null);
+  const [pendingDeleteChallenge, setPendingDeleteChallenge] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
@@ -106,7 +107,6 @@ export const ChallengeManagementView = ({ user }) => {
   };
 
   const handleDeleteChallenge = async (challengeId) => {
-    if (!confirm('Permanently delete this challenge? This cannot be undone.')) return;
     try {
       const res = await fetch(`/api/challenges/${challengeId}`, {
         method: 'DELETE',
@@ -114,6 +114,7 @@ export const ChallengeManagementView = ({ user }) => {
         body: JSON.stringify({ userId: user.id }),
       });
       if (res.ok) {
+        setPendingDeleteChallenge(null);
         fetchMyChallenges();
       } else {
         const err = await res.json();
@@ -382,7 +383,7 @@ export const ChallengeManagementView = ({ user }) => {
           </button>
           {['Active', 'Upcoming'].includes(getChallengeStatus(challenge)) && (
             <button
-              onClick={() => handleDeleteChallenge(challenge.challenge_id)}
+              onClick={() => setPendingDeleteChallenge(challenge)}
               className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-xl transition-all flex items-center gap-2"
               title="Delete challenge permanently"
             >
@@ -951,6 +952,36 @@ export const ChallengeManagementView = ({ user }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteChallenge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[2rem] bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-2xl p-6">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-900/20 text-red-500 flex items-center justify-center mb-4">
+              <Trash2 size={22} />
+            </div>
+            <h3 className="text-xl font-black text-primary mb-2">Delete Challenge?</h3>
+            <p className="text-sm text-secondary leading-relaxed mb-5">
+              This will permanently delete <span className="font-black text-primary">{pendingDeleteChallenge.title}</span>, its recipe assignments, participants, and proof submissions.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteChallenge(null)}
+                className="flex-1 rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-3 text-sm font-black text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteChallenge(pendingDeleteChallenge.challenge_id)}
+                className="flex-1 rounded-xl bg-red-500 px-4 py-3 text-sm font-black text-white hover:bg-red-600 transition-all"
+              >
+                Delete Challenge
+              </button>
+            </div>
           </div>
         </div>
       )}

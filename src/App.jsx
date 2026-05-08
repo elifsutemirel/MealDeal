@@ -77,6 +77,52 @@ export default function App() {
   }, [guest]);
 
   useEffect(() => {
+    if (!user?.id) return;
+
+    let cancelled = false;
+
+    const syncUserRole = async () => {
+      try {
+        const res = await fetch(`/api/users/${user.id}/role`);
+        if (!res.ok) {
+          if (!cancelled) handleLogout();
+          return;
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        const nextUser = {
+          id: data.user_id,
+          name: data.username,
+          username: data.username,
+          email: data.email,
+          role: data.role,
+        };
+
+        const changed =
+          nextUser.username !== user.username ||
+          nextUser.email !== user.email ||
+          nextUser.role !== user.role;
+
+        if (changed) {
+          setUser(nextUser);
+          setCurrentTab(routeAfterLogin(nextUser.role));
+          setSelectedRecipe(null);
+        }
+      } catch (err) {
+        console.error('Failed to sync user role:', err);
+      }
+    };
+
+    syncUserRole();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     if (user?.id) {
       fetchMealLists();
     }

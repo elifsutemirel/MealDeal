@@ -163,6 +163,17 @@ export const ChallengesView = ({ user }) => {
     );
   }
 
+  if (selectedChallenge) {
+    return (
+      <ChallengeDetailModal
+        challenge={selectedChallenge}
+        user={user}
+        onClose={() => setSelectedChallenge(null)}
+        onProgressUpdate={handleProgressUpdate}
+      />
+    );
+  }
+
   return (
     <>
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-8 pb-20">
@@ -254,9 +265,17 @@ export const ChallengesView = ({ user }) => {
                   className="bg-secondary rounded-[2rem] overflow-hidden border border-primary shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
                 >
                   <div className="relative h-44 overflow-hidden">
-                    <div className="w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-600 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center">
-                      <Trophy size={64} className="text-white/30" />
-                    </div>
+                    {challenge.image ? (
+                      <img
+                        src={challenge.image}
+                        alt={challenge.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-emerald-400 to-emerald-600 group-hover:scale-105 transition-transform duration-500 flex items-center justify-center">
+                        <Trophy size={64} className="text-white/30" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-4 right-4 bg-white dark:bg-slate-800 rounded-full w-12 h-12 flex items-center justify-center text-2xl shadow-lg">
                       🏆
@@ -359,14 +378,6 @@ export const ChallengesView = ({ user }) => {
         )}
       </div>
 
-      {selectedChallenge && (
-        <ChallengeDetailModal
-          challenge={selectedChallenge}
-          user={user}
-          onClose={() => setSelectedChallenge(null)}
-          onProgressUpdate={handleProgressUpdate}
-        />
-      )}
     </>
   );
 };

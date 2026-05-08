@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  X, Trophy, ChefHat, Utensils, CheckCircle2, Circle, Crown,
+  ArrowLeft, Trophy, ChefHat, Utensils, CheckCircle2, Circle, Crown,
   Loader2, Camera, Upload, Clock, AlertCircle, XCircle, Eye, ThumbsUp, ThumbsDown, ClipboardList
 } from 'lucide-react';
 
@@ -242,15 +242,16 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
   const isHomeCook = ['Home Cook', 'Verified Chef'].includes(user?.role);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="animate-in fade-in slide-in-from-right-4 duration-500 pt-4 pb-20">
+      <button
+        onClick={onClose}
+        className="mb-6 inline-flex items-center gap-2 rounded-2xl bg-white dark:bg-slate-800 px-4 py-3 text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700 shadow-sm hover:text-emerald-600 hover:border-emerald-200 dark:hover:border-emerald-700 transition-all"
+      >
+        <ArrowLeft size={16} />
+        Back to Challenges
+      </button>
 
-      {/* Modal */}
-      <div className="relative bg-white dark:bg-slate-900 w-full sm:max-w-3xl max-h-[92vh] sm:max-h-[88vh] rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-100 dark:border-slate-800">
+      <div className="relative bg-white dark:bg-slate-900 w-full max-w-5xl mx-auto rounded-[2rem] shadow-sm flex flex-col overflow-hidden border border-slate-100 dark:border-slate-800">
 
         {/* Hero banner */}
         <div className="relative h-44 flex-shrink-0 overflow-hidden">
@@ -258,9 +259,10 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 bg-white/20 backdrop-blur-md text-white rounded-full p-2 hover:bg-white/30 transition-colors"
+            className="absolute top-4 left-4 bg-white/20 backdrop-blur-md text-white rounded-full p-2 hover:bg-white/30 transition-colors"
+            aria-label="Back to challenges"
           >
-            <X size={18} />
+            <ArrowLeft size={18} />
           </button>
           <div className="absolute bottom-4 left-6 right-6">
             <div className="flex items-center gap-2 mb-1">
@@ -312,7 +314,7 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
         )}
 
         {/* Scrollable content */}
-        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+        <div className="p-6 space-y-6">
 
           {/* Description & meta — always visible */}
           <div>
