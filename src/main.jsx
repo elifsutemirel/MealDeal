@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
+import { ToastProvider } from './components/Common/Toast.jsx'
 import './global.css'
 import './index.css'
 
@@ -46,7 +47,9 @@ window.onunhandledrejection = function (event) {
 try {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </React.StrictMode>,
   );
 } catch (err) {

@@ -357,6 +357,21 @@
   color: #fff;
   background: linear-gradient(135deg, #0f172a, #111827);
   box-shadow: 0 16px 28px rgba(15, 23, 42, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.recipe-primary-button:focus-visible {
+  outline-color: #10b981;
+  outline-offset: 3px;
+}
+
+/* Submit "Create recipe" button — extra ring to clearly show boundary */
+section > .recipe-primary-button[type="submit"],
+form .recipe-primary-button[type="submit"] {
+  border: 2px solid #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18), 0 16px 28px rgba(15, 23, 42, 0.18);
 }
 
 /* Keep disabled primary buttons readable: avoid reducing text opacity and ensure sufficient contrast */
@@ -368,7 +383,43 @@
   background: linear-gradient(135deg, #374151, #1f2937) !important;
   box-shadow: none !important;
   filter: brightness(0.9) !important;
+  border: 2px solid rgba(255,255,255,0.08) !important;
 }
+
+/* Photo drop zone */
+.recipe-photo-drop {
+  border: 2px dashed rgba(203, 213, 225, 0.95);
+  border-radius: 1.1rem;
+  background: rgba(248, 250, 252, 0.98);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.recipe-photo-drop:hover {
+  border-color: #10b981;
+  background: rgba(236, 253, 245, 0.6);
+}
+
+.dark .recipe-photo-drop {
+  border-color: rgba(51, 65, 85, 0.8);
+  background: #0f172a;
+}
+
+.dark .recipe-photo-drop:hover {
+  border-color: #10b981;
+  background: rgba(6, 78, 59, 0.15);
+}
+
+.recipe-photo-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  min-height: 8rem;
+}
+
 
 .recipe-demo-button {
   color: #fff;

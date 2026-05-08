@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, X } from 'lucide-react';
 import { UNIT_LABELS } from '../../utils/unitConversion';
+import { useToast } from '../Common/Toast.jsx';
 
 // Helper to get allowed units for an ingredient by name
 const getUnitOptionsForIngredient = (ingredient_name, allIngredients) => {
@@ -14,6 +15,7 @@ const getUnitOptionsForIngredient = (ingredient_name, allIngredients) => {
 const InventoryRow = ({ item, onUpdate, onDelete }) => {
   const [price, setPrice] = useState(item.price);
   const [qty, setQty] = useState(item.available_qty);
+  const [confirming, setConfirming] = useState(false);
   const hasChanged = price !== item.price || qty !== item.available_qty;
 
   return (
@@ -22,31 +24,53 @@ const InventoryRow = ({ item, onUpdate, onDelete }) => {
       <td className="px-4 py-8">
         <div className="flex items-center gap-1">
           <span className="text-slate-400">$</span>
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="w-28 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+          <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="w-28 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
         </div>
       </td>
       <td className="px-4 py-8">
         <div className="flex items-center gap-2">
-          <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="w-32 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
+          <input type="number" min="0" step="0.01" value={qty} onChange={(e) => setQty(e.target.value)} className="w-32 bg-transparent border-none p-0 font-bold focus:ring-0 outline-none" />
           <span className="text-[10px] font-black uppercase text-slate-400">{item.unit}</span>
         </div>
       </td>
       <td className="px-4 py-8">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(item.last_updated).toLocaleDateString()}</span>
       </td>
-      <td className="px-4 py-8 text-right flex flex-col gap-2 justify-center items-end">
-        {hasChanged ? (
-          <button onClick={() => onUpdate(item.inventory_id, price, qty)} className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors">Update</button>
+      <td className="px-4 py-8 text-right">
+        {confirming ? (
+          <div className="flex items-center justify-end gap-2">
+            <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
+              <AlertTriangle size={12} /> Delete?
+            </span>
+            <button
+              onClick={() => { onDelete(item.inventory_id); setConfirming(false); }}
+              className="text-[10px] font-black uppercase tracking-widest bg-red-500 text-white px-2 py-1 rounded-lg hover:bg-red-600 transition-colors"
+            >Yes</button>
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+            >No</button>
+          </div>
         ) : (
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-700">Sync'd</span>
+          <div className="flex flex-col gap-2 items-end">
+            {hasChanged ? (
+              <button onClick={() => onUpdate(item.inventory_id, price, qty)} className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors">Update</button>
+            ) : (
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-200 dark:text-slate-700">Sync'd</span>
+            )}
+            <button
+              onClick={() => setConfirming(true)}
+              className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition-colors"
+            >Delete</button>
+          </div>
         )}
-        <button onClick={() => onDelete(item.inventory_id)} className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition-colors">Delete</button>
       </td>
     </tr>
   );
 };
 
 export const SupplierInventoryView = ({ user }) => {
+  const { add: toast } = useToast();
   const [inventory, setInventory] = useState([]);
   const [allIngredients, setAllIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +124,10 @@ export const SupplierInventoryView = ({ user }) => {
   };
 
   const handleUpdate = async (id, price, qty) => {
+    if (parseFloat(price) < 0 || parseFloat(qty) < 0) {
+      toast('Price and Quantity cannot be negative.', 'error');
+      return;
+    }
     try {
       await fetch(`/api/supplier/inventory/${id}`, {
         method: 'PUT',
@@ -107,26 +135,29 @@ export const SupplierInventoryView = ({ user }) => {
         body: JSON.stringify({ price: parseFloat(price), available_qty: parseFloat(qty) })
       });
       fetchInventory();
-    } catch (err) { console.error(err); }
+      toast('Inventory updated!', 'success');
+    } catch (err) { console.error(err); toast('Failed to update item', 'error'); }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
     try {
-      await fetch(`/api/supplier/inventory/${id}`, {
-        method: 'DELETE'
-      });
+      await fetch(`/api/supplier/inventory/${id}`, { method: 'DELETE' });
       fetchInventory();
-    } catch (err) { console.error(err); }
+      toast('Item removed from inventory.', 'success');
+    } catch (err) { console.error(err); toast('Failed to delete item.', 'error'); }
   };
 
   const handleAdd = async () => {
     if (!newItem.ingredient_name || !newItem.price || !newItem.available_qty) {
-      alert('Please fill in all fields');
+      toast('Please fill in all fields', 'warning');
+      return;
+    }
+    if (parseFloat(newItem.price) < 0 || parseFloat(newItem.available_qty) < 0) {
+      toast('Price and Quantity cannot be negative.', 'error');
       return;
     }
     try {
-      await fetch('/api/supplier/inventory', {
+      const res = await fetch('/api/supplier/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,13 +169,19 @@ export const SupplierInventoryView = ({ user }) => {
           supplier_id: user.id
         })
       });
+      if (!res.ok) {
+        const err = await res.json();
+        toast(err.message || 'Failed to add item', 'error');
+        return;
+      }
       setShowAdd(false);
       setNewItem({ ingredient_name: '', unit: 'kg', price: '', package_size: '1', available_qty: '' });
       fetchInventory();
-      fetchIngredients(); // Refresh ingredients list in case a new one was added
+      fetchIngredients();
+      toast('Item added to inventory!', 'success');
     } catch (err) {
       console.error(err);
-      alert('Failed to add item');
+      toast('Failed to add item', 'error');
     }
   };
 
@@ -187,11 +224,11 @@ export const SupplierInventoryView = ({ user }) => {
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Price ($)</label>
-              <input type="number" onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0.00" />
+              <input type="number" min="0" step="0.01" onChange={e => setNewItem({ ...newItem, price: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0.00" />
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock Qty</label>
-              <input type="number" onChange={e => setNewItem({ ...newItem, available_qty: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0" />
+              <input type="number" min="0" step="0.01" onChange={e => setNewItem({ ...newItem, available_qty: e.target.value })} className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded-xl p-4 text-sm focus:ring-2 ring-emerald-500/20 outline-none" placeholder="0" />
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Unit</label>

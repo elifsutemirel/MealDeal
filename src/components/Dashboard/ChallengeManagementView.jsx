@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Trophy, Plus, X, Users, Image, Check, XCircle, Clock, Calendar, Target, ChefHat, Loader2, MessageSquare, Send, Eye, Trash2, History, Search, UtensilsCrossed } from 'lucide-react';
+import { useToast } from '../Common/Toast.jsx';
 
 export const ChallengeManagementView = ({ user }) => {
+  const { add: toast } = useToast();
   const [myChallenges, setMyChallenges] = useState([]);
   const [allRecipes, setAllRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,24 @@ export const ChallengeManagementView = ({ user }) => {
   const [newRecipeIngredients, setNewRecipeIngredients] = useState([{ ingredient_id: '', qty: '', unit: '' }]);
   const [recipeCreating, setRecipeCreating] = useState(false);
   const [ingredientSearch, setIngredientSearch] = useState('');
+  const [challengePhotoPreview, setChallengePhotoPreview] = useState(null);
+  const challengePhotoInputRef = useRef(null);
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please upload a valid image file.', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast('Image size must be less than 5MB.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => setChallengePhotoPreview(e.target.result);
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     fetchMyChallenges();
@@ -129,10 +149,12 @@ export const ChallengeManagementView = ({ user }) => {
   const handleCreateChallenge = async (e) => {
     e.preventDefault();
     if (!newChallenge.title || !newChallenge.start_date || !newChallenge.end_date) {
-      return alert('Please fill in all required fields');
+      toast('Please fill in all required fields', 'warning');
+      return;
     }
     if (newChallengeRecipes.size === 0) {
-      return alert('Please select at least one recipe for the challenge.');
+      toast('Please select at least one recipe for the challenge.', 'warning');
+      return;
     }
 
     try {
@@ -145,6 +167,7 @@ export const ChallengeManagementView = ({ user }) => {
           description: newChallenge.description,
           start_date: newChallenge.start_date,
           end_date: newChallenge.end_date,
+          image: challengePhotoPreview || null,
         }),
       });
 
@@ -164,15 +187,16 @@ export const ChallengeManagementView = ({ user }) => {
         setNewChallenge({ title: '', description: '', start_date: '', end_date: '' });
         setNewChallengeRecipes(new Set());
         setRecipeSearchQuery('');
+        setChallengePhotoPreview(null);
         fetchMyChallenges();
-        alert('Challenge created successfully!');
+        toast('Challenge created successfully! 🎉', 'success');
       } else {
         const error = await res.json();
-        alert(error.message || error.error || 'Failed to create challenge');
+        toast(error.message || error.error || 'Failed to create challenge', 'error');
       }
     } catch (err) {
       console.error('Failed to create challenge:', err);
-      alert('Failed to create challenge');
+      toast('Failed to create challenge', 'error');
     }
   };
 
@@ -684,6 +708,48 @@ export const ChallengeManagementView = ({ user }) => {
                 onChange={(e) => setNewChallenge({ ...newChallenge, end_date: e.target.value })}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                 required
+              />
+            </div>
+          </div>
+          {/* Cover Photo Upload */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+              <Image size={16} /> Cover Photo
+            </label>
+            <div
+              onClick={() => challengePhotoInputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file) handlePhotoUpload({ target: { files: [file] } });
+              }}
+              className="w-full h-40 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all cursor-pointer overflow-hidden relative"
+            >
+              {challengePhotoPreview ? (
+                <>
+                  <img src={challengePhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setChallengePhotoPreview(null); }}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+                  >
+                    <X size={16} />
+                  </button>
+                </>
+              ) : (
+                <div className="text-center">
+                  <Image size={32} className="mx-auto mb-2 opacity-50" />
+                  <p className="text-sm font-bold">Click or drag & drop</p>
+                  <p className="text-xs mt-1 opacity-70">JPG, PNG, WebP (max 5MB)</p>
+                </div>
+              )}
+              <input
+                ref={challengePhotoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoUpload}
               />
             </div>
           </div>

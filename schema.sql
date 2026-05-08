@@ -129,7 +129,7 @@ CREATE TABLE "Recipe" (
     title           VARCHAR(255)    NOT NULL,
     description     TEXT,
     preparation_steps TEXT,
-    media_url       VARCHAR(255),
+    media_url       TEXT,
     cook_time_min   INT             NOT NULL,
     visibility      VARCHAR(20)     NOT NULL DEFAULT 'public',
     creation_time   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -233,6 +233,7 @@ CREATE TABLE "KitchenChallenge" (
     winner_id     INT          REFERENCES "User"(user_id) ON DELETE SET NULL,
     title         VARCHAR(255) NOT NULL,
     description   TEXT,
+    image_url     TEXT,
     start_date    DATE         NOT NULL,
     end_date      DATE         NOT NULL
 );

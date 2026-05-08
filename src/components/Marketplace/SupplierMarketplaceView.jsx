@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, MapPin, Store, ShoppingBasket, Plus, Minus } from 'lucide-react';
+import { useToast } from '../Common/Toast.jsx';
 
 export const SupplierMarketplaceView = ({ user, onAddToCart }) => {
+  const { add: toast } = useToast();
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,7 +73,7 @@ export const SupplierMarketplaceView = ({ user, onAddToCart }) => {
     
     // Reset qty
     setQuantities(prev => ({ ...prev, [item.inventory_id]: 1 }));
-    alert(`Added ${qty} ${item.unit} of ${item.name} to cart!`);
+    toast(`Added ${qty} ${item.unit} of ${item.name} to cart!`, 'success');
   };
 
   const filteredSuppliers = suppliers.filter(s => 

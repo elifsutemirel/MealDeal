@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ArrowLeft, Sparkles, Leaf, ChefHat, Clock, X, ArrowRight, Plus, Minus, ShoppingBasket, ListPlus, Star, Send, Trash2 } from 'lucide-react';
 import { getPricePerRecipeUnit, canSupplierFulfill, areUnitsCompatible, convertAmount } from '../../utils/unitConversion';
+import { useToast } from '../Common/Toast.jsx';
 
 export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAddedToList, onDelete }) => {
+  const { add: toast } = useToast();
   const mapIngredientsWithSelection = (nextIngredients, previousIngredients = []) => {
     const previousById = new Map(previousIngredients.map(i => [i.id?.toString(), i]));
 
@@ -181,11 +183,11 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
     return roots;
   }, [reviews]);
 
-  const ReviewItem = ({ review, depth = 0 }) => {
+  const renderReviewItem = (review, depth = 0) => {
     const isReplying = replyingTo?.id === review.id;
 
     return (
-      <div className={`space-y-4 ${depth > 0 ? 'ml-6 md:ml-10 mt-4 border-l-2 border-slate-100 dark:border-slate-700 pl-4' : ''}`}>
+      <div key={review.id} className={`space-y-4 ${depth > 0 ? 'ml-6 md:ml-10 mt-4 border-l-2 border-slate-100 dark:border-slate-700 pl-4' : ''}`}>
         <div className="p-6 bg-slate-50 dark:bg-slate-700/50 rounded-2xl animate-in fade-in transition-all hover:shadow-md border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
@@ -255,9 +257,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         
         {review.replies && review.replies.length > 0 && (
           <div className="space-y-4">
-            {review.replies.map(reply => (
-              <ReviewItem key={reply.id} review={reply} depth={depth + 1} />
-            ))}
+            {review.replies.map(reply => renderReviewItem(reply, depth + 1))}
           </div>
         )}
       </div>
@@ -432,7 +432,6 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
   const canDelete = user && (parseInt(user.id) === parseInt(recipe.creator_id) || user.role === 'Administrator');
 
   const handleDeleteRecipe = async () => {
-    if (!window.confirm('Permanently delete this recipe? This cannot be undone.')) return;
     try {
       const res = await fetch(`/api/recipes/${recipe.id}`, {
         method: 'DELETE',
@@ -440,21 +439,22 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         body: JSON.stringify({ userId: user.id }),
       });
       if (res.ok) {
+        toast('Recipe deleted.', 'success');
         if (onDelete) onDelete(recipe.id);
         else onBack();
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to delete recipe.');
+        toast(data.message || 'Failed to delete recipe.', 'error');
       }
     } catch (err) {
       console.error('Delete recipe error:', err);
-      alert('Failed to delete recipe.');
+      toast('Failed to delete recipe.', 'error');
     }
   };
 
   const handleOpenMealListModal = async () => {
     if (!user) {
-      alert('Please sign in to save recipes to meal lists');
+      toast('Please sign in to save recipes to meal lists', 'warning');
       return;
     }
     setMealListLoading(true);
@@ -467,7 +467,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to load meal lists');
+      toast('Failed to load meal lists', 'error');
     } finally {
       setMealListLoading(false);
     }
@@ -481,16 +481,16 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
         body: JSON.stringify({ recipe_id: recipe.id })
       });
       if (res.ok) {
-        alert(`Added to meal list!`);
+        toast('Added to meal list!', 'success');
         setShowMealListModal(false);
         if (onRecipeAddedToList) onRecipeAddedToList();
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to add recipe');
+        toast(data.message || 'Failed to add recipe', 'error');
       }
     } catch (err) {
       console.error(err);
-      alert('Error adding to meal list');
+      toast('Error adding to meal list', 'error');
     }
   };
 
@@ -701,9 +701,7 @@ export const RecipeDetailView = ({ recipe, onBack, onAddToCart, user, onRecipeAd
                   <div className="py-12 text-center text-sm font-bold text-slate-300 dark:text-slate-500 uppercase tracking-widest">No reviews yet</div>
                 ) : (
                   <div className="space-y-8">
-                    {nestedReviews.map((rev) => (
-                      <ReviewItem key={rev.id} review={rev} />
-                    ))}
+                    {nestedReviews.map((rev) => renderReviewItem(rev))}
                   </div>
                 )}
               </div>

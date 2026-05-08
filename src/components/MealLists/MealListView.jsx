@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../Common/Toast.jsx';
 import { Trash2, Plus, X, ChefHat, Loader2 } from 'lucide-react';
 
 export const MealListView = ({ user, mealLists, onRefresh }) => {
+  const { add: toast } = useToast();
   const [selectedList, setSelectedList] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -25,7 +27,7 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
 
   const handleCreateMealList = async () => {
     if (!newListName.trim()) {
-      alert('Please enter a meal list name');
+      toast('Please enter a meal list name', 'warning');
       return;
     }
     setLoading(true);
@@ -47,14 +49,14 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
       }
     } catch (err) {
       console.error('Error creating meal list:', err);
-      alert('Failed to create meal list');
+      toast('Failed to create meal list', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteMealList = async (listId) => {
-    if (!window.confirm('Delete this meal list?')) return;
+    
     try {
       const res = await fetch(`/api/meallist/${listId}`, { method: 'DELETE' });
       if (res.ok) {
@@ -63,7 +65,7 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
       }
     } catch (err) {
       console.error('Error deleting meal list:', err);
-      alert('Failed to delete meal list');
+      toast('Failed to delete meal list', 'error');
     }
   };
 
@@ -77,7 +79,7 @@ export const MealListView = ({ user, mealLists, onRefresh }) => {
       }
     } catch (err) {
       console.error('Error removing recipe:', err);
-      alert('Failed to remove recipe');
+      toast('Failed to remove recipe', 'error');
     }
   };
 

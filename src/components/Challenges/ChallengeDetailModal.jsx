@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../Common/Toast.jsx';
 import {
   ArrowLeft, Trophy, ChefHat, Utensils, CheckCircle2, Circle, Crown,
   Loader2, Camera, Upload, Clock, AlertCircle, XCircle, Eye, ThumbsUp, ThumbsDown, ClipboardList
 } from 'lucide-react';
 
 export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdate }) => {
+  const { add: toast } = useToast();
   const [leaderboard, setLeaderboard] = useState([]);
   const [progress, setProgress] = useState({ cooked_count: 0, total: 0, submissions: [] });
   const [recipes, setRecipes] = useState([]);
@@ -121,11 +123,11 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
         await fetchLeaderboard();
         if (onProgressUpdate) onProgressUpdate(challenge.challenge_id);
       } else {
-        alert(data.message || 'Review failed.');
+        toast(data.message || 'Review failed.', 'error');
       }
     } catch (err) {
       console.error('Review error:', err);
-      alert('Failed to submit review.');
+      toast('Failed to submit review.', 'error');
     } finally {
       setReviewingId(null);
     }
@@ -135,12 +137,12 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
     if (!file) return;
     // Validate type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file (JPG, PNG, WebP, etc.)');
+      toast('Please select an image file (JPG, PNG, WebP, etc.)', 'error');
       return;
     }
     // Max 5 MB
     if (file.size > 5 * 1024 * 1024) {
-      alert('File too large. Maximum size is 5 MB.');
+      toast('File too large. Maximum size is 5 MB.', 'error');
       return;
     }
     const reader = new FileReader();
@@ -154,9 +156,9 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
     // Prefer uploaded file (base64), fall back to URL
     const fd = fileData[recipeId];
     const url = fd ? fd.dataUrl : (photoUrls[recipeId] || '').trim();
-    if (!url) return alert('Please choose a photo or paste an image URL first.');
+    if (!url) { toast('Please choose a photo or paste an image URL first.', 'warning'); return; }
     if (!fd && !url.startsWith('http') && !url.startsWith('data:')) {
-      return alert('Please enter a valid URL starting with http.');
+      toast('Please enter a valid URL starting with http.', 'error'); return;
     }
 
     setSubmittingRecipeId(recipeId);
@@ -175,13 +177,13 @@ export const ChallengeDetailModal = ({ challenge, user, onClose, onProgressUpdat
         await fetchProgress();
         await fetchLeaderboard();
         if (onProgressUpdate) onProgressUpdate(challenge.challenge_id);
-        alert('Photo submitted for review!');
+        toast('Photo submitted for review! Awaiting chef approval.', 'success');
       } else {
-        alert(data.message || 'Failed to submit photo.');
+        toast(data.message || 'Failed to submit photo.', 'error');
       }
     } catch (err) {
       console.error('Submit error:', err);
-      alert('Failed to submit photo.');
+      toast('Failed to submit photo.', 'error');
     } finally {
       setSubmittingRecipeId(null);
     }

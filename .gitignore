@@ -3,6 +3,7 @@
 /docker-compose.yml
 /uploads
 .env
+.env.*
 
 screenshots/
 scripts/

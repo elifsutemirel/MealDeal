@@ -1,7 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, ChefHat, Clock3, Flame, Plus, Sparkles, Trash2, UtensilsCrossed } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { ArrowLeft, CheckCircle2, ChefHat, Clock3, Flame, ImageIcon, Plus, Sparkles, Trash2, UtensilsCrossed } from 'lucide-react';
 import './RecipeCreateView.css';
 import { UNIT_LABELS } from '../../utils/unitConversion';
+import { useToast } from '../Common/Toast.jsx';
+
+const DIETARY_OPTIONS = [
+  { value: 'Vegan', label: '🌱 Vegan' },
+  { value: 'Gluten-Free', label: '🌾 Gluten-Free' },
+  { value: 'Keto', label: '🥑 Keto' },
+  { value: '', label: 'None / Other' },
+];
 
 const DIFFICULTY_LEVELS = ['Easy', 'Medium', 'Hard'];
 const VISIBILITY_OPTIONS = ['public', 'private'];
@@ -23,11 +31,12 @@ const getUnitOptionsForIngredient = (ingredient_id, allIngredients) => {
 const emptyIngredient = { ingredient_id: '', qty: '', unit: '' };
 
 export const RecipeCreateView = ({ user, onCreated }) => {
+  const { add: toast } = useToast();
   const [title, setTitle] = useState('');
   const [preparationSteps, setPreparationSteps] = useState('');
   const [cookTime, setCookTime] = useState(30);
   const [difficulty, setDifficulty] = useState('Easy');
-  const [dietary, setDietary] = useState('');
+  const [dietary, setDietary] = useState('Vegan');
   const [servings, setServings] = useState(2);
   const [visibility, setVisibility] = useState('public');
   const [ingredients, setIngredients] = useState([{ ...emptyIngredient }]);
@@ -38,6 +47,9 @@ export const RecipeCreateView = ({ user, onCreated }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [topRecipes, setTopRecipes] = useState([]);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/ingredients')
@@ -63,18 +75,22 @@ export const RecipeCreateView = ({ user, onCreated }) => {
     setPreparationSteps('');
     setCookTime(30);
     setDifficulty('Easy');
-    setDietary('');
+    setDietary('Vegan');
     setServings(2);
     setVisibility('public');
     setIngredients([{ ...emptyIngredient }]);
     setMessage('');
+    setPhotoFile(null);
+    setPhotoPreview(null);
   };
 
   const applyTopRecipe = (recipe) => {
     setTitle(recipe.title);
     setCookTime(recipe.cook_time_min);
     setDifficulty(recipe.difficulty_level || 'Easy');
-    setDietary(recipe.dietary_tag || '');
+    // Match dietary to our options or default to Vegan
+    const matched = DIETARY_OPTIONS.find(o => o.value && o.value.toLowerCase() === (recipe.dietary_tag || '').toLowerCase());
+    setDietary(matched ? matched.value : 'Vegan');
     setServings(recipe.base_servings || 2);
     setVisibility('public');
     const ings = Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0
@@ -140,6 +156,23 @@ export const RecipeCreateView = ({ user, onCreated }) => {
     setSearchQuery('');
   };
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Please select an image file.', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast('File too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -154,6 +187,7 @@ export const RecipeCreateView = ({ user, onCreated }) => {
         dietary_tag: dietary,
         base_servings: servings,
         visibility,
+        media_url: photoPreview || null,
         ingredients: ingredients.filter(i => i.ingredient_id).map(i => ({ 
           ingredient_id: String(i.ingredient_id).startsWith('external-') ? i.ingredient_id : Number(i.ingredient_id), 
           name: allIngredients.find(a => String(a.ingredient_id) === String(i.ingredient_id))?.name,
@@ -171,10 +205,12 @@ export const RecipeCreateView = ({ user, onCreated }) => {
         throw new Error(err.message || 'Failed to create recipe');
       }
       const data = await res.json();
+      toast('Recipe created successfully! 🎉', 'success');
       setMessage('Recipe created successfully!');
       if (onCreated) onCreated(data);
     } catch (err) {
       console.error(err);
+      toast(err.message || 'Failed to create recipe', 'error');
       setMessage(err.message || 'Error');
     } finally {
       setLoading(false);
@@ -335,13 +371,16 @@ export const RecipeCreateView = ({ user, onCreated }) => {
 
               <div className="recipe-field-grid recipe-field-grid--two">
                 <div>
-                  <label className="recipe-label">Dietary Tag</label>
-                  <input
+                  <label className="recipe-label">Dietary Type</label>
+                  <select
                     value={dietary}
                     onChange={(e) => setDietary(e.target.value)}
-                    placeholder="e.g. Vegan, Keto, Gluten-Free"
                     className="recipe-field"
-                  />
+                  >
+                    {DIETARY_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="recipe-label">Visibility</label>
@@ -357,6 +396,45 @@ export const RecipeCreateView = ({ user, onCreated }) => {
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* Photo Upload */}
+              <div>
+                <label className="recipe-label flex items-center gap-1"><ImageIcon size={12} /> Recipe Photo</label>
+                <div
+                  className="recipe-photo-drop"
+                  onClick={() => photoInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file) handlePhotoChange({ target: { files: [file] } });
+                  }}
+                >
+                  {photoPreview ? (
+                    <div className="relative">
+                      <img src={photoPreview} alt="Preview" className="w-full h-40 object-cover rounded-xl" />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPhotoFile(null); setPhotoPreview(null); }}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center text-xs font-bold hover:bg-red-600 transition-colors"
+                      >✕</button>
+                    </div>
+                  ) : (
+                    <div className="recipe-photo-placeholder">
+                      <ImageIcon size={28} className="text-slate-300 dark:text-slate-600 mb-2" />
+                      <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">Click or drag & drop to add a photo</p>
+                      <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-1">JPG, PNG, WebP · max 5 MB</p>
+                    </div>
+                  )}
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
                 </div>
               </div>
             </div>
@@ -489,7 +567,10 @@ export const RecipeCreateView = ({ user, onCreated }) => {
               </span>
             </div>
             <div className="recipe-preview-card">
-              <div className="recipe-preview-hero">
+              <div 
+                className="recipe-preview-hero"
+                style={{ backgroundImage: photoPreview ? `url(${photoPreview})` : undefined }}
+              >
                 <div className="recipe-preview-hero-content">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Recipe card</p>
                   <h3 className="recipe-preview-title">{title || 'Your recipe title'}</h3>

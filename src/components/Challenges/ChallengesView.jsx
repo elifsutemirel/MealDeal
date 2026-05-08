@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useToast } from '../Common/Toast.jsx';
 import { Loader2, Trophy, Search, X, Clock } from 'lucide-react';
 import { ChallengeDetailModal } from './ChallengeDetailModal';
 
 export const ChallengesView = ({ user }) => {
+  const { add: toast } = useToast();
   const [filter, setFilter] = useState('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [challenges, setChallenges] = useState([]);
@@ -77,9 +79,9 @@ export const ChallengesView = ({ user }) => {
 
   const handleJoin = async (e, challengeId) => {
     e.stopPropagation();
-    if (!user) return alert('Please sign in to join a challenge.');
+    if (!user) { toast('Please sign in to join a challenge.', 'warning'); return; }
     if (user.role !== 'Home Cook') {
-      return alert('Only Home Cooks can join challenges. Verified Chefs are not eligible.');
+      toast('Only Home Cooks can join challenges. Verified Chefs are not eligible.', 'warning'); return;
     }
 
     setJoiningId(challengeId);
@@ -93,14 +95,10 @@ export const ChallengesView = ({ user }) => {
       if (res.ok) {
         setJoinedIds(new Set([...joinedIds, challengeId]));
         fetchChallenges();
-        alert('Joined challenge successfully!');
+        toast('Joined challenge successfully! ', 'success');
       } else {
         const error = await res.json();
-        alert(
-          error.message === 'User has already joined this challenge.'
-            ? 'Already joined!'
-            : 'Failed to join challenge.'
-        );
+        toast(error.message === 'User has already joined this challenge.' ? 'Already joined!' : 'Failed to join challenge.', 'warning');
       }
     } catch (err) {
       console.error('Failed to join challenge:', err);

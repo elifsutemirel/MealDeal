@@ -1576,6 +1576,7 @@ app.get('/api/recipes', async (req, res) => {
                 r.title,
                 r.description,
                 r.preparation_steps,
+                r.media_url,
                 u.username AS chef,
                 r.dietary_tag AS category,
                 r.cook_time_min AS time,
@@ -1643,7 +1644,7 @@ app.get('/api/recipes', async (req, res) => {
             difficulty: row.difficulty,
             category: row.category,
             base_servings: row.base_servings,
-            image: MOCK_IMAGES[index % MOCK_IMAGES.length],
+            image: row.media_url || MOCK_IMAGES[index % MOCK_IMAGES.length],
             ingredients: row.ingredients,
             steps: row.preparation_steps
                 ? row.preparation_steps.split('\n').map(s => s.trim()).filter(Boolean)
@@ -2154,6 +2155,7 @@ app.get('/api/challenges', async (req, res) => {
                 kc.challenge_id,
                 kc.title,
                 kc.description,
+                kc.image_url,
                 kc.start_date,
                 kc.end_date,
                 kc.creator_id,
@@ -2184,12 +2186,16 @@ app.get('/api/challenges', async (req, res) => {
             'Budget Gourmet': { icon: '💎', difficulty: 'Hard', duration: 'Ongoing', prize: 'Deal Hunter Badge + 60 MealCoins', image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' },
         };
 
-        const rows = result.rows.map(r => ({
-            ...r,
-            participants: parseInt(r.participants) || 0,
-            recipe_count: parseInt(r.recipe_count) || 0,
-            ...(DISPLAY[r.title] || { icon: '🍽️', difficulty: 'Medium', duration: 'Ongoing', prize: 'Badge', image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' }),
-        }));
+        const rows = result.rows.map(r => {
+            const defaults = DISPLAY[r.title] || { icon: '🍽️', difficulty: 'Medium', duration: 'Ongoing', prize: 'Badge', image: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&q=80&w=600' };
+            return {
+                ...r,
+                participants: parseInt(r.participants) || 0,
+                recipe_count: parseInt(r.recipe_count) || 0,
+                ...defaults,
+                image: r.image_url || defaults.image,
+            };
+        });
 
         res.json(rows);
     } catch (error) {
@@ -2327,7 +2333,7 @@ app.get('/api/challenges/:id/recipes', async (req, res) => {
 // POST /api/challenges — create new challenge (Verified Chef only)
 app.post('/api/challenges', async (req, res) => {
     const creator_id = req.body.creator_id || req.body.userId;
-    const { title, description, start_date, end_date } = req.body;
+    const { title, description, start_date, end_date, image } = req.body;
 
     if (!creator_id || !title || !start_date || !end_date) {
         return res.status(400).json({ message: 'Missing required fields' });
@@ -2345,10 +2351,10 @@ app.post('/api/challenges', async (req, res) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO "KitchenChallenge" (creator_id, title, description, start_date, end_date)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO "KitchenChallenge" (creator_id, title, description, image_url, start_date, end_date)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [creator_id, title, description || null, start_date, end_date]
+            [creator_id, title, description || null, image || null, start_date, end_date]
         );
 
         res.json({ message: 'Challenge created successfully!', challenge: result.rows[0] });
