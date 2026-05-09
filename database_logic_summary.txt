@@ -1,0 +1,131 @@
+=============================================================================
+MEALDEAL: FULL FUNCTIONAL REDIRECTION & DATABASE TRIGGER MAP
+=============================================================================
+
+Bu liste, sistemdeki her bir fonksiyonun (butonun) frontend'den veritabanına 
+kadar izlediği tam yolu ve tetiklediği veritabanı olaylarını dökümler.
+
+-----------------------------------------------------------------------------
+1. KULLANICI İŞLEMLERİ (AUTH & USER OPERATIONS)
+-----------------------------------------------------------------------------
+
+[1.1] Kayıt (Register)
+   - Frontend: AuthView.jsx (handleSubmit)
+   - API: server.js -> app.post('/api/auth/register')
+   - DB Yönlendirme: INSERT INTO "User", "HomeCook" veya "LocalSupplier"
+   - [TRIGGER]: trg_supplier_exclusivity / trg_creator_exclusivity (Zıt roller engellenir)
+
+[1.2] Giriş (Login)
+   - Frontend: AuthView.jsx (handleSubmit)
+   - API: server.js -> app.post('/api/auth/login')
+   - DB Yönlendirme: SELECT ... LEFT JOIN (Tüm alt tablolar tek sorguda taranır)
+
+[1.3] Profil Bilgilerini Getirme
+   - API: server.js -> app.get('/api/profile/:id')
+   - DB Yönlendirme: SELECT FROM "User" WHERE user_id = $1
+
+[1.4] Şifre Güncelleme
+   - API: server.js -> app.patch('/api/profile/password')
+   - DB Yönlendirme: UPDATE "User" SET password_hash = $1
+   - [TRIGGER]: trg_user_timestamp (updated_at kolonunu otomatik günceller)
+
+
+-----------------------------------------------------------------------------
+2. TARİF VE KEŞFET MODÜLÜ (RECIPE & EXPLORE)
+-----------------------------------------------------------------------------
+
+[2.1] Tarif Arama ve Filtreleme
+   - Frontend: ExploreView.jsx
+   - API: server.js -> app.get('/api/recipes')
+   - DB Yönlendirme: functionality_queries.sql (ILIKE ile metin arama ve JOIN'ler)
+
+[2.2] Tarif Detay Sayfası
+   - API: server.js -> app.get('/api/recipes/:id')
+   - [VIEW]: vw_RecipeFullDetails (Sorgu bu view üzerinden döner)
+
+[2.3] Yeni Tarif Oluşturma
+   - Frontend: RecipeCreateView.jsx
+   - API: server.js -> app.post('/api/recipes')
+   - DB Yönlendirme: INSERT INTO "Recipe" (Başlık, Süre, vb.)
+   - DB Yönlendirme 2: INSERT INTO "Recipe_Ingredient" (Malzeme-Tarif bağı)
+
+[2.4] Yorum ve Puan Verme
+   - API: server.js -> app.post('/api/recipes/:id/comments')
+   - DB Yönlendirme: INSERT INTO "Comment" (recipe_id, user_id, rating)
+
+
+-----------------------------------------------------------------------------
+3. PAZARYERİ VE SEPET (MARKETPLACE & CHECKOUT)
+-----------------------------------------------------------------------------
+
+[3.1] Malzeme Arama (Ingredient Pool)
+   - API: server.js -> app.get('/api/ingredients/search')
+   - DB Yönlendirme: SELECT FROM "Ingredient" WHERE name ILIKE $1
+
+[3.2] Sepete Ekleme / Porsiyon Ölçeklendirme
+   - Frontend: CartView.jsx
+   - İşlem: Backend porsiyon sayısına göre (Hedef/Baz) malzeme miktarını çarpar.
+
+[3.3] Sipariş Onayı (Checkout)
+   - API: server.js -> app.post('/api/checkout')
+   - DB Yönlendirme: INSERT INTO "Order" (status = 'confirmed')
+   - [TRIGGER 1]: trg_update_inventory_on_order (Stok Kontrolü & Düşürme)
+   - [TRIGGER 2]: trg_distribute_royalties_on_order (Şefe %10 Telif Yatırma)
+   - [TRIGGER 3]: trg_update_user_total_on_order (Kullanıcı Harcamasını Güncelleme)
+
+
+-----------------------------------------------------------------------------
+4. ŞEF VE TEDARİKCİ PANELLERİ (DASHBOARDS)
+-----------------------------------------------------------------------------
+
+[4.1] Şef Kazanç Paneli (Royalty Dashboard)
+   - API: server.js -> app.get('/api/creator/royalty-dashboard')
+   - SQL Tekniği: CTE (WITH review_stats, purchase_stats)
+   - DB Yönlendirme: Recipe, Order ve Comment tablolarının toplu analizi.
+
+[4.2] Tedarikçi Stok Güncelleme
+   - API: server.js -> app.post('/api/supplier/inventory')
+   - DB Yönlendirme: INSERT ... ON CONFLICT DO UPDATE (Mevcut stok varsa günceller)
+
+[4.3] Şef Başvurusu Yapma
+   - API: server.js -> app.post('/api/verified-chef-applications')
+   - DB Yönlendirme: INSERT INTO "VerifiedChefApplication"
+
+
+-----------------------------------------------------------------------------
+5. ADMİN İŞLEMLERİ (ADMIN OPERATIONS)
+-----------------------------------------------------------------------------
+
+[5.1] Admin Özet İstatistikleri
+   - API: server.js -> app.get('/api/admin/dashboard-summary')
+   - DB Yönlendirme: SELECT COUNT(*) FROM "User", "Order", "Recipe"
+
+[5.2] Şef Başvurusu Onaylama
+   - API: server.js -> app.patch('/api/admin/verified-chef-applications/:id/status')
+   - DB Yönlendirme: UPDATE "VerifiedChefApplication" SET status = 'approved'
+   - [TRIGGER]: trg_promote_to_verified_chef (Kullanıcıyı otomatik Şef rütbesine sokar)
+
+
+-----------------------------------------------------------------------------
+6. SOSYAL VE DİĞER ÖZELLİKLER (SOCIAL & MEAL LISTS)
+-----------------------------------------------------------------------------
+
+[6.1] Challenge'a Katılma
+   - API: server.js -> app.post('/api/challenges/:id/join')
+   - DB Yönlendirme: INSERT INTO "Challenge_Participant"
+
+[6.2] Yemek Listesi Oluşturma
+   - API: server.js -> app.post('/api/meal-lists')
+   - DB Yönlendirme: INSERT INTO "MealList"
+
+[6.3] Liderlik Tablosu
+   - API: server.js -> app.get('/api/leaderboard')
+   - DB Yönlendirme: SELECT username, total FROM "User" ORDER BY total DESC
+
+
+-----------------------------------------------------------------------------
+ÖNEMLİ NOT:
+Tüm bu işlemler "PostgreSQL" veritabanı sunucusunda, "schema.sql" dosyasında 
+tanımlanan kısıtlamalar (constraints) ve tetikleyiciler (triggers) altında 
+güvenli bir şekilde gerçekleştirilmektedir.
+-----------------------------------------------------------------------------

@@ -38,6 +38,7 @@ CREATE TABLE "User" (
     email         VARCHAR(255)   NOT NULL UNIQUE,
     password_hash VARCHAR(255)   NOT NULL,
     join_date     TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     total         DECIMAL(10, 2) NOT NULL DEFAULT 0.00
 );
 
@@ -353,15 +354,27 @@ JOIN "Ingredient" i ON si.ingredient_id = i.ingredient_id
 WHERE si.available_qty > 0;
 
 
+
 -- =============================================================
 -- TRIGGERS & FUNCTIONS
 -- =============================================================
 
--- 1. Deduct inventory when an order is confirmed
+-- 1. Deduct inventory when an order is confirmed (WITH STOCK CHECK)
 CREATE OR REPLACE FUNCTION fn_deduct_inventory()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- Only trigger when order is changed to 'confirmed'
     IF (NEW.status = 'confirmed' AND (TG_OP = 'INSERT' OR OLD.status != 'confirmed')) THEN
+        -- Verify stock availability first
+        IF EXISTS (
+            SELECT 1 FROM "SupplierInventory" si
+            JOIN "CartItem" ci ON ci.inventory_id = si.inventory_id
+            WHERE ci.cart_id = NEW.cart_id AND si.available_qty < ci.qty
+        ) THEN
+            RAISE EXCEPTION 'Insufficient stock for one or more items.';
+        END IF;
+
+        -- Deduct the quantities
         UPDATE "SupplierInventory" si
         SET available_qty = si.available_qty - ci.qty
         FROM "CartItem" ci
@@ -410,3 +423,66 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_promote_to_verified_chef
 AFTER INSERT OR UPDATE ON "VerifiedChefApplication"
 FOR EACH ROW EXECUTE FUNCTION fn_promote_chef();
+
+
+-- 4. Automatic Royalty Distribution (10% to Recipe Creator)
+CREATE OR REPLACE FUNCTION fn_distribute_royalties()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_creator_id INT;
+BEGIN
+    IF (NEW.status = 'confirmed' AND (TG_OP = 'INSERT' OR OLD.status != 'confirmed')) THEN
+        -- Find the creator of the recipe in this order
+        SELECT r.creator_id INTO v_creator_id 
+        FROM "Recipe" r
+        JOIN "Cart" c ON c.recipe_id = r.recipe_id
+        WHERE c.cart_id = NEW.cart_id;
+
+        -- Add 10% of order total to creator's earnings
+        IF v_creator_id IS NOT NULL THEN
+            UPDATE "RecipeCreator"
+            SET total = total + (NEW.total_amount * 0.10)
+            WHERE user_id = v_creator_id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER trg_distribute_royalties_on_order
+AFTER INSERT OR UPDATE ON "Order"
+FOR EACH ROW EXECUTE FUNCTION fn_distribute_royalties();
+
+
+-- 5. Role Exclusivity Check (A User cannot be both a Supplier and a Creator)
+CREATE OR REPLACE FUNCTION fn_check_role_exclusivity()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_TABLE_NAME = 'LocalSupplier' THEN
+        IF EXISTS (SELECT 1 FROM "RecipeCreator" WHERE user_id = NEW.user_id) THEN
+            RAISE EXCEPTION 'User is already a Recipe Creator. Cannot be a Local Supplier.';
+        END IF;
+    ELSIF TG_TABLE_NAME = 'RecipeCreator' THEN
+        IF EXISTS (SELECT 1 FROM "LocalSupplier" WHERE user_id = NEW.user_id) THEN
+            RAISE EXCEPTION 'User is already a Local Supplier. Cannot be a Recipe Creator.';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_supplier_exclusivity BEFORE INSERT ON "LocalSupplier" FOR EACH ROW EXECUTE FUNCTION fn_check_role_exclusivity();
+CREATE TRIGGER trg_creator_exclusivity BEFORE INSERT ON "RecipeCreator" FOR EACH ROW EXECUTE FUNCTION fn_check_role_exclusivity();
+
+
+-- 6. Universal "updated_at" Timestamp Trigger
+CREATE OR REPLACE FUNCTION fn_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_user_timestamp BEFORE UPDATE ON "User" FOR EACH ROW EXECUTE FUNCTION fn_set_timestamp();
