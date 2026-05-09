@@ -514,6 +514,9 @@ app.patch('/api/admin/verified-chef-applications/:applicationId/status', async (
             RETURNING *;
         `, [status, admin_note || null, adminId, applicationId]);
 
+
+        /* 
+        // Note: The logic below is now handled by the 'trg_promote_to_verified_chef' trigger in schema.sql
         if (status === 'approved') {
             await client.query(
                 'INSERT INTO "RecipeCreator" (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING',
@@ -526,6 +529,7 @@ app.patch('/api/admin/verified-chef-applications/:applicationId/status', async (
                 DO UPDATE SET verification_date = CURRENT_DATE, status = 'approved';
             `, [application.user_id]);
         }
+        */
 
         await client.query('COMMIT');
         res.json(updated.rows[0]);
@@ -856,7 +860,7 @@ app.post('/api/recipes', async (req, res) => {
                 const existingCheck = await client.query('SELECT ingredient_id, allowed_units FROM "Ingredient" WHERE name ILIKE $1', [ingredientName]);
                 if (existingCheck.rows.length > 0) {
                     actualIngredientId = existingCheck.rows[0].ingredient_id;
-                    
+
                     // Validate unit is allowed (trim spaces)
                     const allowedUnits = existingCheck.rows[0].allowed_units.split(',').map(u => u.trim());
                     if (!allowedUnits.includes(ing.unit.trim())) {
@@ -1210,7 +1214,7 @@ app.get('/api/ingredients', async (req, res) => {
 app.get('/api/ingredients/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.json([]);
-    
+
     try {
         // 1. Search local DB first
         const localResult = await pool.query(
@@ -1364,12 +1368,12 @@ app.post('/api/supplier/inventory', async (req, res) => {
             ingredientId = ingRes.rows[0].ingredient_id;
             allowedUnits = ingRes.rows[0].allowed_units;
             console.log(`FOUND EXISTING INGREDIENT: "${ingredient_name.trim()}" with ID ${ingredientId}, allowed units: ${allowedUnits}`);
-            
+
             // Validate unit
             const allowedUnitsArray = allowedUnits.split(',');
             if (!allowedUnitsArray.includes(unit)) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ 
+                return res.status(400).json({
                     message: `Invalid unit "${unit}" for ingredient "${ingredient_name.trim()}". Allowed units: ${allowedUnits}`,
                     allowedUnits: allowedUnitsArray
                 });
@@ -1973,9 +1977,9 @@ app.post('/api/checkout', async (req, res) => {
 
     // Unit conversion helper (mirrors src/utils/unitConversion.js)
     const UNIT_GROUPS_SERVER = {
-        weight: { units: ['kg','g','mg','lb','oz'], toBase: { kg:1000, g:1, mg:0.001, lb:453.592, oz:28.3495 } },
-        volume: { units: ['L','ml','cup','tbsp','tsp'], toBase: { L:1000, ml:1, cup:236.588, tbsp:14.7868, tsp:4.92892 } },
-        count:  { units: ['pc','pcs','bunch','clove','spear','can','adet'], toBase: { pc:1, pcs:1, bunch:1, clove:1, spear:1, can:1, adet:1 } },
+        weight: { units: ['kg', 'g', 'mg', 'lb', 'oz'], toBase: { kg: 1000, g: 1, mg: 0.001, lb: 453.592, oz: 28.3495 } },
+        volume: { units: ['L', 'ml', 'cup', 'tbsp', 'tsp'], toBase: { L: 1000, ml: 1, cup: 236.588, tbsp: 14.7868, tsp: 4.92892 } },
+        count: { units: ['pc', 'pcs', 'bunch', 'clove', 'spear', 'can', 'adet'], toBase: { pc: 1, pcs: 1, bunch: 1, clove: 1, spear: 1, can: 1, adet: 1 } },
     };
     function convertAmount(amount, fromUnit, toUnit) {
         if (!fromUnit || !toUnit || fromUnit === toUnit) return amount;
@@ -1997,16 +2001,19 @@ app.post('/api/checkout', async (req, res) => {
         client = await pool.connect();
         await client.query('BEGIN');
 
-        // 1. Update User's total amount spent
+
+        /* 
+        // Note: Handled by 'trg_update_user_total_on_order' trigger in schema.sql
         await client.query(
             'UPDATE "User" SET total = total + $1 WHERE user_id = $2',
             [totalAmount || 0, effectiveUserId]
         );
+        */
         // 2. Process each recipe/marketplace item as its own cart so recipe
         // purchases can be counted correctly in creator royalties.
         if (items && items.length > 0) {
             console.log(`\x1b[32m[CHECKOUT START]\x1b[0m User: ${effectiveUserId}`);
-            
+
             for (const cartEntry of items) {
                 const ingredients = cartEntry.recipe.cartIngredients || [];
                 // For direct marketplace items (isIngredientOnly), baseQty=1 and servings=qty bought.
@@ -2028,10 +2035,10 @@ app.post('/api/checkout', async (req, res) => {
 
                 for (const ing of ingredients) {
                     const rawId = ing.id;
-                    const ingId = typeof rawId === 'string' && rawId.startsWith('i') 
-                        ? parseInt(rawId.replace('i','')) 
+                    const ingId = typeof rawId === 'string' && rawId.startsWith('i')
+                        ? parseInt(rawId.replace('i', ''))
                         : parseInt(rawId);
-                    
+
                     if (isNaN(ingId)) continue;
 
                     let invRes;
@@ -2041,7 +2048,7 @@ app.post('/api/checkout', async (req, res) => {
                             `SELECT si.inventory_id, si.supplier_id, ls.location_name, si.price, si.available_qty, si.unit
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
-                             WHERE si.inventory_id = $1 AND si.available_qty > 0`, 
+                             WHERE si.inventory_id = $1 AND si.available_qty > 0`,
                             [ing.selectedInventoryId]
                         );
                     } else {
@@ -2051,11 +2058,11 @@ app.post('/api/checkout', async (req, res) => {
                              FROM "SupplierInventory" si
                              JOIN "LocalSupplier" ls ON ls.user_id = si.supplier_id
                              WHERE si.ingredient_id = $1 AND si.available_qty > 0 
-                             ORDER BY si.price ASC LIMIT 1`, 
+                             ORDER BY si.price ASC LIMIT 1`,
                             [ingId]
                         );
                     }
-                    
+
                     if (invRes.rows.length > 0) {
                         const inv = invRes.rows[0];
                         const recipeQty = Number(ing.baseQty || 1) * servingsFactor;
@@ -2073,21 +2080,25 @@ app.post('/api/checkout', async (req, res) => {
                         }
 
                         const newQty = Math.max(0, Number(inv.available_qty) - qtyToDeduct);
-                        
+
                         console.log(`    - Processing: ${ing.name} | ${recipeQty} ${recipeUnit} → ${qtyToDeduct} ${supplierUnit} deducted from "${inv.location_name}" (had ${inv.available_qty} ${supplierUnit})`);
 
                         await client.query(
-                            'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)', 
+                            'INSERT INTO "CartItem" (cart_id, inventory_id, qty, unit_price) VALUES ($1, $2, $3, $4)',
                             [cartId, inv.inventory_id, qtyToDeduct, inv.price]
                         );
 
-                        // Always UPDATE (never DELETE) to preserve FK references from CartItem
+
+                        /* 
+                        // Note: Handled by 'trg_update_inventory_on_order' trigger in schema.sql
                         await client.query('UPDATE "SupplierInventory" SET available_qty = $1 WHERE inventory_id = $2', [newQty, inv.inventory_id]);
                         if (newQty <= 0) {
                             console.log(`      ✓ Stock reached 0. Item marked as out of stock.`);
                         } else {
                             console.log(`      ✓ Stock updated. Remaining: ${newQty}`);
                         }
+                        */
+                        console.log(`    - Processing: ${ing.name} | ${recipeQty} ${recipeUnit} → ${qtyToDeduct} ${supplierUnit} (Handled by Trigger)`);
                     }
                 }
 
@@ -2266,10 +2277,10 @@ app.get('/api/challenges/:id/progress', async (req, res) => {
         );
 
         const cooked_recipe_ids = approvedRes.rows.map(r => r.recipe_id);
-        
-        res.json({ 
-            cooked_count: cooked_recipe_ids.length, 
-            total, 
+
+        res.json({
+            cooked_count: cooked_recipe_ids.length,
+            total,
             cooked_recipe_ids,
             submissions: allSubmissions.rows
         });
@@ -2489,7 +2500,7 @@ app.post('/api/challenges/:id/submit', async (req, res) => {
         let result;
         if (existingSubmission.rows.length > 0) {
             const existing = existingSubmission.rows[0];
-            
+
             // Only allow resubmission if previous was rejected
             if (existing.status === 'rejected') {
                 // Update the existing submission with new photo and reset status to pending
@@ -2501,9 +2512,9 @@ app.post('/api/challenges/:id/submit', async (req, res) => {
                     [photoUrl, existing.submission_id]
                 );
             } else {
-                return res.status(400).json({ 
-                    message: existing.status === 'approved' 
-                        ? 'This recipe has already been approved.' 
+                return res.status(400).json({
+                    message: existing.status === 'approved'
+                        ? 'This recipe has already been approved.'
                         : 'Submission already pending review.'
                 });
             }
@@ -2633,26 +2644,26 @@ app.post('/api/challenges/submissions/:id/review', async (req, res) => {
                     );
 
                     if (challenge.rows.length > 0 && !challenge.rows[0].winner_id) {
-                            // This user is the first to complete - set as winner
-                            await pool.query(
-                                'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
-                                [user_id, challenge_id]
-                            );
+                        // This user is the first to complete - set as winner
+                        await pool.query(
+                            'UPDATE "KitchenChallenge" SET winner_id = $1 WHERE challenge_id = $2',
+                            [user_id, challenge_id]
+                        );
 
-                            // Award 100 reward points
-                            await pool.query(
-                                'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3) ON CONFLICT (challenge_id, user_id) DO NOTHING',
-                                [challenge_id, user_id, 100]
-                            );
+                        // Award 100 reward points
+                        await pool.query(
+                            'INSERT INTO "ChallengeReward" (challenge_id, user_id, reward_points) VALUES ($1, $2, $3) ON CONFLICT (challenge_id, user_id) DO NOTHING',
+                            [challenge_id, user_id, 100]
+                        );
 
-                            // Award 50 MealCoins to winner
-                            await pool.query(
-                                'UPDATE "User" SET total = total + 50 WHERE user_id = $1',
-                                [user_id]
-                            );
+                        // Award 50 MealCoins to winner
+                        await pool.query(
+                            'UPDATE "User" SET total = total + 50 WHERE user_id = $1',
+                            [user_id]
+                        );
 
-                            console.log(`🏆 Challenge ${challenge_id} won by user ${user_id}!`);
-                        }
+                        console.log(`🏆 Challenge ${challenge_id} won by user ${user_id}!`);
+                    }
                 }
             }
         }
@@ -2843,7 +2854,7 @@ app.get('/api/users/:id/rewards', async (req, res) => {
 // DELETE /api/user/:id — Delete user account and all associated data
 app.delete('/api/user/:id', async (req, res) => {
     const userId = req.params.id;
-    
+
     try {
         await pool.query('BEGIN');
 
@@ -2865,7 +2876,7 @@ app.delete('/api/user/:id', async (req, res) => {
         }
 
         await pool.query('COMMIT');
-        
+
         res.json({ message: 'User account deleted successfully.' });
     } catch (error) {
         // Rollback transaction on error
@@ -2885,6 +2896,22 @@ app.use((error, _req, res, next) => {
 // Fallback to index.html for client-side routing (must be after all /api routes)
 app.use((req, res) => {
     res.sendFile('dist/index.html', { root: __dirname });
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}`);
+    try {
+        await pool.query('SELECT NOW()');
+        console.log('PostgreSQL Connected Successfully');
+        await ensureChallengeWorkflowSchema();
+        await ensureMockAdminAccount();
+        await seedChallengesIfEmpty();
+    } catch (err) {
+        console.error('PostgreSQL Connection Error:', err.message);
+    }
+});
+res.sendFile('dist/index.html', { root: __dirname });
 });
 
 const PORT = process.env.PORT || 3001;

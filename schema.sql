@@ -301,18 +301,95 @@ DO $$
 DECLARE
     v_user_id INT;
 BEGIN
-    INSERT INTO "User" (username, email, password_hash, join_date)
-    VALUES (
-        'admin',
-        'admin@mealdeal.com',
-        '$2b$10$S0x5rolgosRgc9M2kkCWDOAW0q0Ov41bDIktEwBxB5QPVKo4TuxNS',
-        CURRENT_TIMESTAMP
-    )
-    ON CONFLICT (email) DO NOTHING
-    RETURNING user_id INTO v_user_id;
 
-    IF v_user_id IS NOT NULL THEN
-        INSERT INTO "Administrator" (user_id, role_level, note)
-        VALUES (v_user_id, 'superadmin', 'Default admin account');
+-- =============================================================
+-- VIEWS
+-- =============================================================
+
+-- 1. Detailed Recipe Overview (Joins creators and calculates ratings)
+CREATE OR REPLACE VIEW "vw_RecipeFullDetails" AS
+SELECT 
+    r.recipe_id,
+    r.title,
+    u.username as chef_name,
+    r.difficulty_level,
+    r.cook_time_min,
+    COALESCE(ROUND(AVG(c.rating), 1), 0) as avg_rating,
+    COUNT(DISTINCT ri.ingredient_id) as ingredient_count
+FROM "Recipe" r
+JOIN "User" u ON r.creator_id = u.user_id
+LEFT JOIN "Comment" c ON r.recipe_id = c.recipe_id
+LEFT JOIN "Recipe_Ingredient" ri ON r.recipe_id = ri.recipe_id
+GROUP BY r.recipe_id, u.username;
+
+-- 2. Supplier Inventory Summary
+CREATE OR REPLACE VIEW "vw_SupplierStockOverview" AS
+SELECT 
+    ls.location_name as supplier,
+    i.name as ingredient,
+    si.available_qty,
+    si.unit,
+    si.price
+FROM "SupplierInventory" si
+JOIN "LocalSupplier" ls ON si.supplier_id = ls.user_id
+JOIN "Ingredient" i ON si.ingredient_id = i.ingredient_id
+WHERE si.available_qty > 0;
+
+
+-- =============================================================
+-- TRIGGERS & FUNCTIONS
+-- =============================================================
+
+-- 1. Deduct inventory when an order is confirmed
+CREATE OR REPLACE FUNCTION fn_deduct_inventory()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (NEW.status = 'confirmed' AND (TG_OP = 'INSERT' OR OLD.status != 'confirmed')) THEN
+        UPDATE "SupplierInventory" si
+        SET available_qty = si.available_qty - ci.qty
+        FROM "CartItem" ci
+        WHERE ci.inventory_id = si.inventory_id
+          AND ci.cart_id = NEW.cart_id;
     END IF;
-END $$;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_inventory_on_order
+AFTER INSERT OR UPDATE ON "Order"
+FOR EACH ROW EXECUTE FUNCTION fn_deduct_inventory();
+
+
+-- 2. Update user total spending
+CREATE OR REPLACE FUNCTION fn_update_user_total()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE "User"
+    SET total = total + NEW.total_amount
+    WHERE user_id = (SELECT user_id FROM "Cart" WHERE cart_id = NEW.cart_id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_user_total_on_order
+AFTER INSERT ON "Order"
+FOR EACH ROW EXECUTE FUNCTION fn_update_user_total();
+
+
+-- 3. Automatic Chef Promotion on Approval
+CREATE OR REPLACE FUNCTION fn_promote_chef()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'approved' AND (TG_OP = 'INSERT' OR OLD.status != 'approved') THEN
+        INSERT INTO "RecipeCreator" (user_id) VALUES (NEW.user_id) ON CONFLICT DO NOTHING;
+        INSERT INTO "VerifiedChef" (user_id, verification_date, status)
+        VALUES (NEW.user_id, CURRENT_DATE, 'approved')
+        ON CONFLICT (user_id) DO UPDATE SET status = 'approved', verification_date = CURRENT_DATE;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_promote_to_verified_chef
+AFTER INSERT OR UPDATE ON "VerifiedChefApplication"
+FOR EACH ROW EXECUTE FUNCTION fn_promote_chef();
