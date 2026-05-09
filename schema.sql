@@ -293,6 +293,8 @@ CREATE TABLE "MealListItem" (
 );
 
 -- =============================================================
+
+-- =============================================================
 -- DEFAULT ADMIN ACCOUNT
 -- Credentials: email=admin@mealdeal.com  password=admin123
 -- =============================================================
@@ -301,6 +303,21 @@ DO $$
 DECLARE
     v_user_id INT;
 BEGIN
+    INSERT INTO "User" (username, email, password_hash, join_date)
+    VALUES (
+        'admin',
+        'admin@mealdeal.com',
+        '$2b$10$S0x5rolgosRgc9M2kkCWDOAW0q0Ov41bDIktEwBxB5QPVKo4TuxNS',
+        CURRENT_TIMESTAMP
+    )
+    ON CONFLICT (email) DO NOTHING
+    RETURNING user_id INTO v_user_id;
+
+    IF v_user_id IS NOT NULL THEN
+        INSERT INTO "Administrator" (user_id, role_level, note)
+        VALUES (v_user_id, 'superadmin', 'Default admin account');
+    END IF;
+END $$;
 
 -- =============================================================
 -- VIEWS

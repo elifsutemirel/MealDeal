@@ -2911,19 +2911,3 @@ app.listen(PORT, async () => {
         console.error('PostgreSQL Connection Error:', err.message);
     }
 });
-res.sendFile('dist/index.html', { root: __dirname });
-});
-
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
-    try {
-        await pool.query('SELECT NOW()');
-        console.log('PostgreSQL Connected Successfully');
-        await ensureChallengeWorkflowSchema();
-        await ensureMockAdminAccount();
-        await seedChallengesIfEmpty();
-    } catch (err) {
-        console.error('PostgreSQL Connection Error:', err.message);
-    }
-});
